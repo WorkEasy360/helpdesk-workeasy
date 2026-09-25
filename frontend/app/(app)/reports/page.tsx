@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { PERMISSIONS, type ReportKind } from '@digisoft/shared';
 import { useAuthStore } from '@/stores/auth.store';
 import { PageHeader } from '@/components/layout/page-header';
 import { ReportFilters, toQuery, type ReportFilterValue } from '@/components/reports/report-filters';
-import { cn } from '@/lib/utils';
+import { Tabs, TabPanel } from '@/components/ui/tabs';
+import { LoadingState } from '@/components/ui/states';
 import { TicketsReportTab } from '@/components/reports/tickets-report-tab';
 import { AgentsReportTab } from '@/components/reports/agents-report-tab';
 import { SlaReportTab } from '@/components/reports/sla-report-tab';
@@ -17,18 +19,42 @@ import { Card, CardContent } from '@/components/ui/card';
 
 type Tab = ReportKind | 'EXPORTS';
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'TICKETS', label: 'Tickets' },
-  { key: 'AGENTS', label: 'Agents' },
-  { key: 'SLA', label: 'SLA' },
-  { key: 'CSAT', label: 'CSAT' },
-  { key: 'EXPORTS', label: 'Exports' },
+const TABS: { value: Tab; label: string }[] = [
+  { value: 'TICKETS', label: 'Tickets' },
+  { value: 'AGENTS', label: 'Agents' },
+  { value: 'SLA', label: 'SLA' },
+  { value: 'CSAT', label: 'CSAT' },
+  { value: 'EXPORTS', label: 'Exports' },
 ];
 
+function parseTab(value: string | null): Tab {
+  const upper = value?.toUpperCase();
+  return TABS.find((item) => item.value === upper)?.value ?? 'TICKETS';
+}
+
 export default function ReportsPage() {
+  // useSearchParams needs a Suspense boundary to keep the route statically renderable.
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <ReportsContent />
+    </Suspense>
+  );
+}
+
+function ReportsContent() {
   const can = useAuthStore((state) => state.can);
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<Tab>('TICKETS');
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tab = parseTab(searchParams.get('tab'));
+  const setTab = (next: Tab) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'TICKETS') params.delete('tab');
+    else params.set('tab', next.toLowerCase());
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
   const [filters, setFilters] = useState<ReportFilterValue>({ range: '30d' });
 
   if (!can(PERMISSIONS.REPORT_READ)) {
@@ -50,26 +76,9 @@ export default function ReportsPage() {
     <>
       <PageHeader title="Reports" description="Ticket, agent, SLA and satisfaction reporting." />
 
-      <div role="tablist" aria-label="Report sections" className="flex flex-wrap gap-1 border-b border-border">
-        {TABS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.key}
-            onClick={() => setTab(item.key)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm transition-colors',
-              tab === item.key
-                ? 'border-foreground font-medium text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <Tabs idBase="reports" label="Report sections" items={TABS} value={tab} onValueChange={setTab} />
 
+      <TabPanel idBase="reports" value={tab} className="space-y-4">
       {tab !== 'EXPORTS' ? (
         <div className="flex flex-wrap items-start justify-between gap-3">
           <ReportFilters value={filters} onChange={setFilters} />
@@ -87,6 +96,7 @@ export default function ReportsPage() {
           onExported={() => queryClient.invalidateQueries({ queryKey: ['report-exports'] })}
         />
       ) : null}
+      </TabPanel>
     </>
   );
 }

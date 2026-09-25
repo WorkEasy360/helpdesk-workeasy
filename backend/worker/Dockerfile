@@ -1,11 +1,22 @@
-FROM node:22-bookworm-slim AS build
+# syntax=docker/dockerfile:1
+# Build context: backend/  (docker build -f worker/Dockerfile backend/)
+
+# --- base ----------------------------------------------------------------
+FROM node:22-bookworm-slim AS base
+# openssl: Prisma's query engine links against it (debian-openssl-3.0.x).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+# Pinned pnpm via npm rather than corepack. Keep in sync with backend/package.json.
+RUN npm i -g pnpm@10.33.0 && npm cache clean --force
+ENV CI=true
 WORKDIR /app
-RUN corepack enable
-# Every package.json the worker's dependency graph reaches must be present before
-# `pnpm install`, or pnpm won't recognize it as a workspace project and its own
-# dependencies (prisma's CLI, most notably) silently never get installed. Keep this
-# list in sync with worker's "workspace:*" dependencies.
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+
+# --- build ---------------------------------------------------------------
+FROM base AS build
+# Every workspace manifest the worker's graph reaches must be present before
+# `pnpm install`. Keep in sync with worker's "workspace:*" dependencies.
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages/tsconfig/package.json packages/tsconfig/
 COPY packages/shared/package.json packages/shared/
 COPY packages/db/package.json packages/db/
@@ -15,20 +26,29 @@ COPY packages/ai/package.json packages/ai/
 COPY packages/analytics/package.json packages/analytics/
 COPY packages/storage/package.json packages/storage/
 COPY worker/package.json worker/
-RUN pnpm install --frozen-lockfile || pnpm install
+RUN pnpm install --frozen-lockfile --filter "@digisoft/worker..."
 COPY packages ./packages
 COPY worker ./worker
-# `...` selects the package plus every workspace package it depends on, built in
-# dependency order in one pass — including packages/db's own build script, which
-# already runs `prisma generate` before its `tsc`. No hand-maintained build order to
-# keep in sync as new workspace packages are added.
-RUN pnpm --filter @digisoft/worker... build
+RUN pnpm --filter "@digisoft/worker..." build
+# Prune to production dependencies in place (keeps the built dist/ folders).
+RUN pnpm install --frozen-lockfile --prod --offline --filter "@digisoft/worker..." \
+ && rm -rf packages/*/src worker/src \
+ && find . -name "*.tsbuildinfo" -delete
+RUN node -p "require('/app/packages/db/node_modules/@prisma/client/package.json').version" > /prisma-version
 
-FROM node:22-bookworm-slim AS runtime
-WORKDIR /app
+# --- runtime -------------------------------------------------------------
+FROM base AS runtime
 ENV NODE_ENV=production
-RUN corepack enable && apt-get update && apt-get install -y --no-install-recommends openssl \
- && rm -rf /var/lib/apt/lists/*
+# Root-owned, so the app user can read but not modify its own code and dependencies.
 COPY --from=build /app /app
+# Regenerate the Prisma client against the pruned tree with a throwaway CLI of the
+# lockfile's exact version, then drop the CLI — the worker never migrates.
+COPY --from=build /prisma-version /prisma-version
+RUN cd /app/packages/db \
+ && npx --yes "prisma@$(cat /prisma-version)" generate --schema prisma/schema.prisma \
+ && rm -rf /root/.npm /tmp/*
+RUN mkdir -p /var/lib/digisoft/storage && chown -R node:node /var/lib/digisoft
+USER node
 WORKDIR /app/worker
+# No HTTP listener to probe; Compose restarts the container if the process exits.
 CMD ["node", "dist/main.js"]

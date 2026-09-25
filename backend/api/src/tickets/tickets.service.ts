@@ -1,8 +1,12 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
 import type { Prisma, TicketSource } from '@digisoft/db';
+import { PERMISSIONS } from '@digisoft/shared';
 import type {
   AssignTicketInput,
   AuthenticatedUser,
+  BulkTicketResult,
+  BulkUpdateTicketsInput,
+  BulkUpdateTicketsResponse,
   ChangePriorityInput,
   ChangeStatusInput,
   CreateTicketInput,
@@ -10,6 +14,7 @@ import type {
   ListTicketsQuery,
   MergeTicketInput,
   ResolveTicketInput,
+  TicketStatusCategory,
   UpdateTicketInput,
 } from '@digisoft/shared';
 import { TENANT_PRISMA } from '../prisma/prisma.module';
@@ -36,6 +41,31 @@ const SORTABLE = ['createdAt', 'updatedAt', 'ticketNumber', 'subject', 'dueAt'] 
  */
 const OPEN_STATUS: Prisma.TicketWhereInput = { status: { isResolved: false, isClosed: false } };
 
+const STATUS_CATEGORY: Record<TicketStatusCategory, Prisma.TicketWhereInput> = {
+  open: OPEN_STATUS,
+  // The seeded Closed status is flagged resolved as well, so "resolved" means resolved
+  // and not yet closed.
+  resolved: { status: { isResolved: true, isClosed: false } },
+  closed: { status: { isClosed: true } },
+};
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** `createdTo` is inclusive: a bare date runs to the end of that UTC day. */
+function createdWithin(from?: string, to?: string): Prisma.TicketWhereInput {
+  const createdAt: Prisma.DateTimeFilter<'Ticket'> = {};
+  if (from) {
+    createdAt.gte = new Date(from);
+  }
+  if (to && DATE_ONLY.test(to)) {
+    createdAt.lt = new Date(new Date(to).getTime() + DAY_MS);
+  } else if (to) {
+    createdAt.lte = new Date(to);
+  }
+  return { createdAt };
+}
+
 /** A ticket as any channel hands it over, after that channel resolved its references. */
 export interface ChannelTicketInput {
   organizationId: string;
@@ -60,6 +90,8 @@ export interface ChannelTicketInput {
 
 @Injectable()
 export class TicketsService {
+  private readonly logger = new Logger(TicketsService.name);
+
   constructor(
     @Inject(TENANT_PRISMA) private readonly db: TenantPrismaClient,
     private readonly config: TicketConfigService,
@@ -87,9 +119,13 @@ export class TicketsService {
           ...(query.assignedAgentId ? { assignedAgentId: query.assignedAgentId } : {}),
           ...(query.assignedToMe ? { assignedAgentId: actor.id } : {}),
           ...(query.unassigned ? { assignedAgentId: null } : {}),
-          ...(query.open ? OPEN_STATUS : {}),
           ...(query.q ? this.searchFilter(query.q) : {}),
         },
+        // Kept as separate clauses: several of these constrain the same relation.
+        ...(query.open ? [OPEN_STATUS] : []),
+        ...(query.statusCategory ? [STATUS_CATEGORY[query.statusCategory]] : []),
+        ...(query.overdue ? [OPEN_STATUS, { dueAt: { lt: new Date() } }] : []),
+        ...(query.createdFrom || query.createdTo ? [createdWithin(query.createdFrom, query.createdTo)] : []),
       ],
     };
 
@@ -496,6 +532,97 @@ export class TicketsService {
     this.events.ticketStatusChanged(actor, ticket);
     await this.engine.trigger(actor.organizationId, id, 'STATUS_CHANGED', { from: before.status.name, to: ticket.status.name });
     return ticket;
+  }
+
+  /**
+   * Applies one action to many tickets, one at a time, through the same methods the
+   * single-ticket endpoints use — so visibility, blueprints, the resolution-note rule,
+   * audit history, SLA and automation triggers all behave exactly as they do there. A
+   * failure is recorded against that ticket and the rest carry on.
+   */
+  async bulkUpdate(
+    actor: AuthenticatedUser,
+    input: BulkUpdateTicketsInput,
+  ): Promise<BulkUpdateTicketsResponse> {
+    // The route asks for ticket.update; (un)assigning also needs what /assign needs.
+    if (
+      (input.action === 'assign' || input.action === 'unassign') &&
+      !actor.permissions.includes(PERMISSIONS.TICKET_ASSIGN)
+    ) {
+      throw AppError.forbidden(
+        `Missing required permission: ${PERMISSIONS.TICKET_ASSIGN}`,
+        'PERMISSION_DENIED',
+      );
+    }
+
+    const results: BulkTicketResult[] = [];
+    for (const id of new Set(input.ticketIds)) {
+      try {
+        await this.applyBulkAction(id, actor, input);
+        results.push({ id, ok: true });
+      } catch (error) {
+        results.push({ id, ok: false, error: this.bulkError(id, error) });
+      }
+    }
+
+    const succeeded = results.filter((result) => result.ok).length;
+    return { action: input.action, succeeded, failed: results.length - succeeded, results };
+  }
+
+  private async applyBulkAction(
+    id: string,
+    actor: AuthenticatedUser,
+    input: BulkUpdateTicketsInput,
+  ): Promise<void> {
+    switch (input.action) {
+      case 'assign':
+        await this.assign(id, actor, input.payload);
+        return;
+      case 'unassign':
+        await this.assign(id, actor, { assignedAgentId: null });
+        return;
+      case 'status':
+        await this.changeStatus(id, actor, input.payload);
+        return;
+      case 'resolve':
+        await this.resolve(id, actor, input.payload);
+        return;
+      case 'close':
+        await this.close(id, actor);
+        return;
+      case 'reopen':
+        await this.reopen(id, actor);
+        return;
+      case 'priority':
+        await this.changePriority(id, actor, input.payload);
+        return;
+      case 'addTags':
+      case 'removeTags': {
+        const ticket = await this.findById(actor, id);
+        const current = ticket.tags.map((entry) => entry.tag.id);
+        const change = new Set(input.payload.tagIds);
+        const next =
+          input.action === 'addTags'
+            ? [...new Set([...current, ...input.payload.tagIds])]
+            : current.filter((tagId) => !change.has(tagId));
+        if (next.length === current.length && next.every((tagId) => current.includes(tagId))) {
+          return;
+        }
+        await this.setTags(id, actor, next);
+        return;
+      }
+    }
+  }
+
+  private bulkError(id: string, error: unknown): { code: string; message: string } {
+    if (error instanceof AppError) {
+      return { code: error.code, message: error.message };
+    }
+    if (error instanceof HttpException) {
+      return { code: 'VALIDATION_ERROR', message: error.message };
+    }
+    this.logger.error(`Bulk update failed for ticket ${id}`, error instanceof Error ? error.stack : error);
+    return { code: 'INTERNAL_ERROR', message: 'Something went wrong updating this ticket' };
   }
 
   /** Blueprint transitions the actor may take from the ticket's current status. */

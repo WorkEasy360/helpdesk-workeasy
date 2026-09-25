@@ -11,6 +11,7 @@ import { ApiError } from '@/lib/api-client';
 import { communityService } from '@/services/community.service';
 import { formatDateTime } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/input';
@@ -22,6 +23,7 @@ export default function AgentTopicPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [body, setBody] = useState('');
 
   const topic = useQuery({
@@ -250,7 +252,18 @@ export default function AgentTopicPage() {
             >
               {data.status === 'CLOSED' ? 'Reopen topic' : 'Close topic'}
             </Button>
-            <Button variant="ghost" className="w-full" onClick={() => removeTopic.mutate()}>
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() =>
+                void confirm({
+                  title: 'Delete this topic?',
+                  description: 'The topic and all of its replies will be removed.',
+                  confirmLabel: 'Delete topic',
+                  onConfirm: () => removeTopic.mutateAsync(),
+                })
+              }
+            >
               <Trash2 className="h-4 w-4" aria-hidden />
               Delete topic
             </Button>

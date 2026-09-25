@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field } from '@/components/ui/form';
 import { Input, Select, Textarea } from '@/components/ui/input';
-import { EmptyState, LoadingState } from '@/components/ui/states';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { ArticleSearch } from '@/components/portal/article-search';
 import { usePortalSession } from '@/components/portal/portal-session';
 
@@ -110,6 +110,16 @@ export default function SubmitRequestPage({ params }: { params: Promise<{ slug: 
 
   if (forms.isPending) {
     return <LoadingState />;
+  }
+  if (forms.isError) {
+    return (
+      <ErrorState
+        message={
+          forms.error instanceof ApiError ? forms.error.message : 'Unable to load the request form.'
+        }
+        onRetry={() => forms.refetch()}
+      />
+    );
   }
   if (!active) {
     return (

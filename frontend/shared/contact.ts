@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './pagination';
-import { optionalField, queryBoolean } from './field';
+import { optionalField, queryBoolean, patchSchema } from './field';
 
 export const CONTACT_STATUSES = ['ACTIVE', 'INACTIVE', 'BLOCKED'] as const;
 export type ContactStatus = (typeof CONTACT_STATUSES)[number];
@@ -20,7 +20,7 @@ export const createContactSchema = z.object({
 export type CreateContactInput = z.infer<typeof createContactSchema>;
 export type ContactFormValues = z.input<typeof createContactSchema>;
 
-export const updateContactSchema = createContactSchema.partial();
+export const updateContactSchema = patchSchema(createContactSchema);
 export type UpdateContactInput = z.infer<typeof updateContactSchema>;
 
 export const listContactsQuerySchema = paginationQuerySchema.extend({

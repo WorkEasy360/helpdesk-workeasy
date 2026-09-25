@@ -17,6 +17,7 @@ import { PasswordService } from '../auth/password.service';
 import { TokenService } from '../auth/token.service';
 import { AccessControlService } from '../auth/access-control.service';
 import { MailerService } from '../email/mailer.service';
+import { assertCanGrantRoles } from '../auth/role-grant';
 
 const SORTABLE = ['createdAt', 'updatedAt', 'firstName', 'lastName', 'email'] as const;
 const INVITE_TTL_DAYS = 7;
@@ -88,7 +89,7 @@ export class UsersService {
   }
 
   async create(actor: AuthenticatedUser, input: CreateUserInput) {
-    await this.assertRolesExist(input.roleIds);
+    await this.assertRolesGrantable(actor, input.roleIds);
     await this.assertDepartmentsExist(input.departmentIds);
 
     const existing = await this.db.user.findFirst({
@@ -140,6 +141,8 @@ export class UsersService {
       data: input,
       select: USER_FIELDS,
     });
+    // GET /auth/me serves the cached identity; drop it so the new name shows at once.
+    await this.accessControl.invalidateUser(actor.organizationId, id);
     await this.audit.record({
       organizationId: actor.organizationId,
       actorId: actor.id,
@@ -154,7 +157,10 @@ export class UsersService {
 
   async setRoles(id: string, actor: AuthenticatedUser, roleIds: string[]) {
     await this.findById(id);
-    await this.assertRolesExist(roleIds);
+    // Both sides: the new roles must be within the caller's own access, and so must the
+    // roles being taken away — an Admin cannot demote the Super Admin.
+    await this.assertCanManage(actor, id);
+    await this.assertRolesGrantable(actor, roleIds);
 
     await this.db.$transaction(async (tx) => {
       await tx.userRole.deleteMany({ where: { userId: id } });
@@ -205,6 +211,7 @@ export class UsersService {
     if (id === actor.id && !isActive) {
       throw AppError.validation('You cannot deactivate your own account');
     }
+    await this.assertCanManage(actor, id);
 
     const user = await this.db.$transaction(async (tx) => {
       const updated = await tx.user.update({
@@ -237,6 +244,7 @@ export class UsersService {
       throw AppError.validation('You cannot delete your own account');
     }
     await this.findById(id);
+    await this.assertCanManage(actor, id);
 
     await this.db.$transaction(async (tx) => {
       await tx.user.update({
@@ -292,11 +300,31 @@ export class UsersService {
     });
   }
 
-  private async assertRolesExist(roleIds: string[]): Promise<void> {
-    const found = await this.db.role.count({ where: { id: { in: roleIds } } });
-    if (found !== new Set(roleIds).size) {
+  private async assertRolesGrantable(actor: AuthenticatedUser, roleIds: string[]): Promise<void> {
+    const roles = await this.db.role.findMany({
+      where: { id: { in: roleIds } },
+      select: { name: true, permissions: { select: { permission: { select: { key: true } } } } },
+    });
+    if (roles.length !== new Set(roleIds).size) {
       throw AppError.validation('One or more roles do not exist in this organization');
     }
+    assertCanGrantRoles(actor, roles);
+  }
+
+  /** A user whose roles carry access the caller lacks can only be managed from above. */
+  private async assertCanManage(actor: AuthenticatedUser, userId: string): Promise<void> {
+    const links = await this.db.userRole.findMany({
+      where: { userId },
+      select: {
+        role: {
+          select: { name: true, permissions: { select: { permission: { select: { key: true } } } } },
+        },
+      },
+    });
+    assertCanGrantRoles(
+      actor,
+      links.map((link) => link.role),
+    );
   }
 
   private async assertDepartmentsExist(departmentIds: string[]): Promise<void> {

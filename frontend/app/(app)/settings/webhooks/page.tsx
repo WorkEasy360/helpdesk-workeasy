@@ -10,6 +10,7 @@ import { webhooksService } from '@/services/integrations.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { formatDateTime } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field } from '@/components/ui/form';
@@ -20,6 +21,7 @@ import { Pagination } from '@/components/ui/pagination';
 
 export default function WebhooksPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const can = useAuthStore((state) => state.can);
   const manage = can(PERMISSIONS.WEBHOOK_MANAGE);
 
@@ -266,7 +268,14 @@ export default function WebhooksPage() {
                           variant="ghost"
                           size="icon"
                           aria-label={`Delete ${endpoint.name}`}
-                          onClick={() => remove.mutate(endpoint.id)}
+                          onClick={() =>
+                            void confirm({
+                              title: `Delete ${endpoint.name}?`,
+                              description: 'Events will stop being delivered to this endpoint.',
+                              confirmLabel: 'Delete webhook',
+                              onConfirm: () => remove.mutateAsync(endpoint.id),
+                            })
+                          }
                         >
                           <Trash2 className="h-4 w-4" aria-hidden />
                         </Button>

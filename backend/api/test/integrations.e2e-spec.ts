@@ -35,10 +35,23 @@ describe('Integrations (e2e)', () => {
       .set(auth)
       .send({
         name: 'Ops receiver',
-        url: 'http://127.0.0.1:9/never-answers',
+        // Internal addresses are refused outright; `.invalid` never resolves, so nothing
+        // is ever actually delivered.
+        url: 'https://receiver.invalid/never-answers',
         events: ['ticket.created'],
         ...overrides,
       });
+
+  it('refuses webhook URLs that point inside the network', async () => {
+    for (const url of [
+      'http://127.0.0.1:9/hook',
+      'http://localhost/hook',
+      'http://169.254.169.254/latest/meta-data',
+      'http://[::1]/hook',
+    ]) {
+      await createEndpoint({ url }).expect(400);
+    }
+  });
 
   it('shows the signing secret once and never again', async () => {
     const created = await createEndpoint().expect(201);

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   PERMISSIONS,
@@ -15,7 +15,9 @@ import {
 import { ApiError } from '@/lib/api-client';
 import { rolesService } from '@/services/settings.service';
 import { useAuthStore } from '@/stores/auth.store';
+import type { Role } from '@/types/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Input, Textarea } from '@/components/ui/input';
 import { Field } from '@/components/ui/form';
 import { Badge } from '@/components/ui/badge';
@@ -32,7 +34,10 @@ import { ErrorState, LoadingState } from '@/components/ui/states';
 export default function RolesSettingsPage() {
   const can = useAuthStore((state) => state.can);
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const confirm = useConfirm();
+  const [open, setOpenState] = useState(false);
+  // The role being edited; null while creating a new one.
+  const [editing, setEditing] = useState<Role | null>(null);
   const canManage = can(PERMISSIONS.ROLE_MANAGE);
 
   const roles = useQuery({ queryKey: ['roles'], queryFn: rolesService.list });
@@ -49,17 +54,53 @@ export default function RolesSettingsPage() {
     defaultValues: { permissionKeys: [] },
   });
 
-  const create = useMutation({
-    mutationFn: (values: CreateRoleInput) => rolesService.create(values),
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    if (!next) setEditing(null);
+  };
+
+  const startCreate = () => {
+    setEditing(null);
+    reset({ name: '', description: '', permissionKeys: [] });
+    setOpenState(true);
+  };
+
+  const startEdit = (role: Role) => {
+    setEditing(role);
+    reset({
+      name: role.name,
+      description: role.description ?? '',
+      permissionKeys: role.permissions.map((entry) => entry.permission.key),
+    });
+    setOpenState(true);
+  };
+
+  const save = useMutation({
+    mutationFn: (values: CreateRoleInput) => {
+      if (!editing) return rolesService.create(values);
+      // Always send the full set: the API treats a missing list as an empty one.
+      return rolesService.update(editing.id, {
+        name: values.name,
+        description: values.description,
+        permissionKeys: values.permissionKeys,
+      });
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['roles'] });
-      toast.success('Role created');
+      // Holders of the role see their permissions change on their next request.
+      await queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success(editing ? 'Role updated' : 'Role created');
       reset({ name: '', description: '', permissionKeys: [] });
       setOpen(false);
     },
     onError: (error) =>
       setError('root', {
-        message: error instanceof ApiError ? error.message : 'Unable to create the role.',
+        message:
+          error instanceof ApiError
+            ? error.message
+            : editing
+              ? 'Unable to update the role.'
+              : 'Unable to create the role.',
       }),
   });
 
@@ -87,7 +128,7 @@ export default function RolesSettingsPage() {
     <>
       <div className="flex justify-end">
         {canManage ? (
-          <Button onClick={() => setOpen(true)}>
+          <Button onClick={startCreate}>
             <Plus className="h-4 w-4" aria-hidden />
             New role
           </Button>
@@ -102,16 +143,31 @@ export default function RolesSettingsPage() {
                 <CardTitle>{role.name}</CardTitle>
                 <div className="flex items-center gap-1">
                   {role.isSystem ? <Badge variant="outline">System</Badge> : null}
+                  {/* Built-in roles are fixed by the platform (the API refuses permission
+                      changes to them), so only custom roles are editable. */}
+                  {canManage && !role.isSystem ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Edit ${role.name}`}
+                      onClick={() => startEdit(role)}
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden />
+                    </Button>
+                  ) : null}
                   {canManage && !role.isSystem ? (
                     <Button
                       variant="ghost"
                       size="icon"
                       aria-label={`Delete ${role.name}`}
-                      onClick={() => {
-                        if (window.confirm(`Delete ${role.name}?`)) {
-                          remove.mutate(role.id);
-                        }
-                      }}
+                      onClick={() =>
+                        void confirm({
+                          title: `Delete ${role.name}?`,
+                          description: 'This cannot be undone.',
+                          confirmLabel: 'Delete',
+                          onConfirm: () => remove.mutateAsync(role.id).catch(() => undefined),
+                        })
+                      }
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
                     </Button>
@@ -165,10 +221,10 @@ export default function RolesSettingsPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New role</DialogTitle>
+            <DialogTitle>{editing ? `Edit ${editing.name}` : 'New role'}</DialogTitle>
           </DialogHeader>
           <form
-            onSubmit={handleSubmit((values) => create.mutateAsync(values))}
+            onSubmit={handleSubmit((values) => save.mutateAsync(values))}
             className="space-y-4"
             noValidate
           >
@@ -179,8 +235,14 @@ export default function RolesSettingsPage() {
               <Textarea rows={2} {...register('description')} />
             </Field>
 
-            <fieldset className="space-y-2">
+            <fieldset className="space-y-2" disabled={editing?.isSystem ?? false}>
               <legend className="text-sm font-medium">Permissions</legend>
+              {editing?.isSystem ? (
+                <p className="text-xs text-muted-foreground">
+                  This is a built-in role, so its permissions cannot be changed. Create a new
+                  role to grant a different set.
+                </p>
+              ) : null}
               {permissions.isPending ? (
                 <p className="text-sm text-muted-foreground">Loading permissions…</p>
               ) : (
@@ -210,7 +272,7 @@ export default function RolesSettingsPage() {
                 Cancel
               </Button>
               <Button type="submit" loading={isSubmitting}>
-                Create role
+                {editing ? 'Save changes' : 'Create role'}
               </Button>
             </DialogFooter>
           </form>

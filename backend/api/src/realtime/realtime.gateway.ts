@@ -9,12 +9,18 @@ import type { Server, Socket } from 'socket.io';
 import { PERMISSIONS } from '@digisoft/shared';
 import { TokenService } from '../auth/token.service';
 import { AccessControlService } from '../auth/access-control.service';
+import { AppConfig } from '../config/config.module';
 
 export const RT_EVENTS = {
   NOTIFICATION_CREATED: 'notification.created',
   AGENT_ONLINE: 'agent.online',
   AGENT_OFFLINE: 'agent.offline',
+  /** Sent just before the server drops a socket whose access token has expired. */
+  SESSION_EXPIRED: 'session.expired',
 } as const;
+
+/** setTimeout's ceiling; a longer-lived token is simply re-checked by reconnecting sooner. */
+const MAX_TIMER_MS = 2_147_483_647;
 
 interface SocketIdentity {
   userId: string;
@@ -29,8 +35,12 @@ export interface TicketAudienceRooms {
 /**
  * Authenticated realtime channel. Every socket joins only its own organization and
  * user rooms, so a broadcast can never cross a tenant boundary.
+ *
+ * A socket lives no longer than the access token it connected with: it is dropped when
+ * the token expires, so revoked access or changed permissions cannot outlive the token
+ * on an open connection. The client reconnects with a fresh token.
  */
-@WebSocketGateway({ namespace: '/rt', cors: { credentials: true } })
+@WebSocketGateway({ namespace: '/rt' })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RealtimeGateway.name);
 
@@ -40,9 +50,19 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   constructor(
     private readonly tokens: TokenService,
     private readonly accessControl: AccessControlService,
+    private readonly config: AppConfig,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
+    // Transport CORS is open for the chat widget (see RedisIoAdapter); the agent app is
+    // only ever served from FRONTEND_URL, so a browser handshake from anywhere else is
+    // refused. Non-browser clients send no Origin.
+    const origin = client.handshake.headers.origin;
+    if (origin && origin !== new URL(this.config.get('FRONTEND_URL')).origin) {
+      client.disconnect(true);
+      return;
+    }
+
     const token =
       (client.handshake.auth as { token?: string } | undefined)?.token ??
       (typeof client.handshake.query.token === 'string' ? client.handshake.query.token : undefined);
@@ -63,6 +83,18 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       organizationId: result.payload.org,
     };
     client.data.identity = identity;
+
+    const exp = (result.payload as { exp?: number }).exp;
+    if (exp) {
+      const expiry = setTimeout(
+        () => {
+          client.emit(RT_EVENTS.SESSION_EXPIRED, {});
+          client.disconnect(true);
+        },
+        Math.min(Math.max(exp * 1000 - Date.now(), 0), MAX_TIMER_MS),
+      );
+      client.data.expiry = expiry;
+    }
 
     // Room membership mirrors the API's read scope, so a socket can only ever be sent
     // events for tickets its user is allowed to open.
@@ -92,6 +124,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   handleDisconnect(client: Socket): void {
+    clearTimeout(client.data.expiry as NodeJS.Timeout | undefined);
     const identity = client.data.identity as SocketIdentity | undefined;
     if (!identity) {
       return;

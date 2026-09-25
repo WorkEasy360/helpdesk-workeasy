@@ -7,12 +7,13 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
   UploadedFile as UploadedFileParam,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   portalCreateTicketSchema,
@@ -27,6 +28,7 @@ import { Public } from '../common/decorators/public.decorator';
 import { zodBody } from '../common/pipes/zod-validation.pipe';
 import { AppError } from '../common/errors/app-error';
 import { AttachmentsService, type UploadedFile } from '../attachments/attachments.service';
+import { sendAttachmentDownload } from '../attachments/attachment-download';
 import { CurrentHelpCenter, PortalAuth, PortalGuard, PortalUser } from './portal.guard';
 import { PortalTicketsService } from './portal-tickets.service';
 import type { PortalHelpCenter } from './portal.types';
@@ -92,32 +94,18 @@ export class PortalTicketsController {
     return this.attachments.upload(id, user!, file);
   }
 
-  /** Same authorisation as the agent download: the ticket must be the customer's own. */
+  /**
+   * Same authorisation as the agent download: the ticket must be the customer's own.
+   * Supports the same `?mode=url` JSON answer.
+   */
   @Get('attachments/:attachmentId/download')
   async download(
     @PortalUser() user: AuthenticatedUser | null,
     @Param('attachmentId') attachmentId: string,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    const { target, fileName, mimeType, fileSize } = await this.attachments.download(
-      attachmentId,
-      user!,
-    );
-
-    if (target.url) {
-      res.redirect(302, target.url);
-      return;
-    }
-    if (!target.stream) {
-      throw AppError.notFound('attachment');
-    }
-
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Length', fileSize);
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
-    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    target.stream.pipe(res);
+    sendAttachmentDownload(req, res, await this.attachments.download(attachmentId, user!));
   }
 
   @HttpCode(HttpStatus.OK)

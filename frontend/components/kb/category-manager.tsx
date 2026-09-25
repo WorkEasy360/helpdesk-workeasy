@@ -9,6 +9,7 @@ import { ApiError } from '@/lib/api-client';
 import { kbService } from '@/services/kb.service';
 import type { KbCategory } from '@/types/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/form';
 import { Input, Select, Textarea } from '@/components/ui/input';
@@ -33,6 +34,7 @@ const emptyDraft: Draft = { id: null, name: '', description: '', visibility: 'PU
 /** Category list and editor for the knowledge base, shown as a dialog from the list page. */
 export function CategoryManager({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,7 +115,13 @@ export function CategoryManager({ open, onOpenChange }: { open: boolean; onOpenC
                     variant="ghost"
                     size="icon"
                     aria-label={`Delete ${category.name}`}
-                    onClick={() => remove.mutate(category.id)}
+                    onClick={() =>
+                      void confirm({
+                        title: `Delete ${category.name}?`,
+                        confirmLabel: 'Delete category',
+                        onConfirm: () => remove.mutateAsync(category.id),
+                      })
+                    }
                   >
                     <Trash2 className="h-4 w-4" aria-hidden />
                   </Button>

@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { TicketsModule } from '../tickets/tickets.module';
 import { AttachmentsModule } from '../attachments/attachments.module';
+import { attachmentMulterModule } from '../attachments/multer-options';
 import { CommunityModule } from '../community/community.module';
 import { PortalController } from './portal.controller';
 import { PortalAuthController } from './portal-auth.controller';
@@ -13,7 +14,8 @@ import { PortalContextMiddleware } from './portal-context.middleware';
 import { PortalGuard } from './portal.guard';
 
 @Module({
-  imports: [TicketsModule, AttachmentsModule, CommunityModule],
+  // The portal's own upload route needs the same size limit as the agent one.
+  imports: [TicketsModule, AttachmentsModule, CommunityModule, attachmentMulterModule()],
   controllers: [
     PortalAuthController,
     PortalTicketsController,

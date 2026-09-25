@@ -8,6 +8,7 @@ import {
   type BusinessHoursInput,
   type HolidayInput,
   type UpdateOrganizationInput,
+  patchSchema,
 } from '@digisoft/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -53,7 +54,7 @@ export class OrganizationsController {
   updateBusinessHours(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body(zodBody(businessHoursSchema.partial())) dto: Partial<BusinessHoursInput>,
+    @Body(zodBody(patchSchema(businessHoursSchema))) dto: Partial<BusinessHoursInput>,
   ) {
     return this.organizations.updateBusinessHours(id, user, dto);
   }

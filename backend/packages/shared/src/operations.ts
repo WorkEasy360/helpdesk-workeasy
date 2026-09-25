@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './pagination';
-import { optionalField, queryBoolean } from './field';
+import { optionalField, queryBoolean, patchSchema } from './field';
 import { actionListSchema, conditionTreeSchema } from './rules';
 
 // ---------------------------------------------------------------------------
@@ -32,10 +32,9 @@ export const createActivitySchema = z.object({
 export type CreateActivityInput = z.infer<typeof createActivitySchema>;
 export type ActivityFormValues = z.input<typeof createActivitySchema>;
 
-export const updateActivitySchema = createActivitySchema
-  .omit({ type: true })
-  .partial()
-  .extend({ status: z.enum(ACTIVITY_STATUSES).optional() });
+export const updateActivitySchema = patchSchema(createActivitySchema.omit({ type: true })).extend({
+  status: z.enum(ACTIVITY_STATUSES).optional(),
+});
 export type UpdateActivityInput = z.infer<typeof updateActivitySchema>;
 
 export const listActivitiesQuerySchema = paginationQuerySchema.extend({
@@ -90,7 +89,7 @@ export type AssignmentRuleFormValues = z.input<typeof assignmentRuleSchema>;
  * Partial edits cannot carry the cross-field refinements (Zod refuses `.partial()` on a
  * refined schema); the service re-checks strategy targets on update instead.
  */
-export const updateAssignmentRuleSchema = assignmentRuleBaseSchema.partial();
+export const updateAssignmentRuleSchema = patchSchema(assignmentRuleBaseSchema);
 export type UpdateAssignmentRuleInput = z.infer<typeof updateAssignmentRuleSchema>;
 
 export const reorderSchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(500) });

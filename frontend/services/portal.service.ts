@@ -10,6 +10,7 @@ import type {
 } from '@digisoft/shared';
 import { apiDelete, apiGet, apiGetPaged, apiPost, http } from '@/lib/api-client';
 import type { LoginResponse } from '@digisoft/shared';
+import { downloadFromApi } from '@/services/tickets.service';
 import type {
   CommunityCategory,
   CommunityReply,
@@ -57,6 +58,8 @@ export const portalService = (slug: string) => {
 
     register: (input: PortalRegisterInput) => apiPost<LoginResponse>(`${base}/auth/register`, input),
     login: (input: PortalLoginInput) => apiPost<LoginResponse>(`${base}/auth/login`, input),
+    /** Ends the customer session and clears this help center's refresh cookie. */
+    logout: () => apiPost<{ loggedOut: true }>(`${base}/auth/logout`),
     forgotPassword: (email: string) =>
       apiPost<{ requested: true }>(`${base}/auth/forgot-password`, { email }),
     me: () => apiGet<PortalProfile>(`${base}/auth/me`),
@@ -82,6 +85,9 @@ export const portalService = (slug: string) => {
     },
     attachmentUrl: (attachmentId: string) =>
       `${base}/tickets/attachments/${attachmentId}/download`,
+    /** Authenticated download: a plain link would reach the API without the session header. */
+    downloadAttachment: (attachmentId: string, fileName: string) =>
+      downloadFromApi(`${base}/tickets/attachments/${attachmentId}/download`, fileName),
 
     communityCategories: () => apiGet<CommunityCategory[]>(`${base}/community/categories`),
     topics: (params: Partial<ListTopicsQuery>) =>

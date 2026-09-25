@@ -16,6 +16,7 @@ import {
   type BlueprintInput,
   type ListAutomationRunsQuery,
   type SlaPolicyInput,
+  patchSchema,
 } from '@digisoft/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -78,7 +79,7 @@ export class OperationsController {
   }
 
   @RequirePermissions(PERMISSIONS.OPERATIONS_MANAGE) @Patch('automation-rules/:id')
-  updateAutomation(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser, @Body(zodBody(automationRuleSchema.partial())) dto: Partial<AutomationRuleInput>) {
+  updateAutomation(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser, @Body(zodBody(patchSchema(automationRuleSchema))) dto: Partial<AutomationRuleInput>) {
     return this.automation.update(id, user, dto);
   }
 

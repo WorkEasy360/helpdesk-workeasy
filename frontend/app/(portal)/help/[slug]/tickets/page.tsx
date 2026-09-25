@@ -1,16 +1,17 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
+import { ApiError } from '@/lib/api-client';
 import { portalService } from '@/services/portal.service';
 import { formatDateTime } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { EmptyState, LoadingState } from '@/components/ui/states';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { Pagination } from '@/components/ui/pagination';
 import { usePortalSession } from '@/components/portal/portal-session';
 
@@ -28,11 +29,17 @@ export default function MyRequestsPage({ params }: { params: Promise<{ slug: str
     enabled: session.status === 'signed-in',
   });
 
+  // Navigating is a side effect, so it happens after render rather than during it.
+  useEffect(() => {
+    if (session.status === 'anonymous') {
+      router.replace(`/help/${slug}/login?next=tickets`);
+    }
+  }, [session.status, router, slug]);
+
   if (session.status === 'loading') {
     return <LoadingState />;
   }
   if (session.status === 'anonymous') {
-    router.replace(`/help/${slug}/login?next=tickets`);
     return <LoadingState label="Taking you to sign in…" />;
   }
 
@@ -64,6 +71,13 @@ export default function MyRequestsPage({ params }: { params: Promise<{ slug: str
 
       {tickets.isPending ? (
         <LoadingState />
+      ) : tickets.isError ? (
+        <ErrorState
+          message={
+            tickets.error instanceof ApiError ? tickets.error.message : 'Unable to load your requests.'
+          }
+          onRetry={() => tickets.refetch()}
+        />
       ) : tickets.data && tickets.data.items.length > 0 ? (
         <>
           <div className="space-y-3">

@@ -18,6 +18,8 @@ import { TicketMessagesService } from '../tickets/ticket-messages.service';
 import { AuditService } from '../audit/audit.service';
 import { CHAT_BRIDGE_CHANNEL, CHAT_EVENTS, chatRoom } from './chat.events';
 import { RT_BRIDGE_CHANNEL } from '../realtime/realtime.bridge';
+import { AppConfig } from '../config/config.module';
+import { allowedOriginsOf, isWidgetOriginAllowed } from './widget-origin';
 
 const SESSION_SELECT = {
   id: true,
@@ -67,7 +69,23 @@ export class ChatService {
     private readonly tickets: TicketsService,
     private readonly messages: TicketMessagesService,
     private readonly audit: AuditService,
+    private readonly config: AppConfig,
   ) {}
+
+  /**
+   * Refuses a browser request from a site the chat channel does not list in
+   * `allowedOrigins`. CORS on these routes is open so any embedding site can reach them;
+   * this is where the channel's own list is enforced.
+   */
+  async assertWidgetOrigin(origin: string | undefined): Promise<void> {
+    const channel = await this.channel();
+    if (!channel) {
+      return;
+    }
+    if (!isWidgetOriginAllowed(origin, this.config.get('FRONTEND_URL'), allowedOriginsOf(channel.config))) {
+      throw AppError.forbidden('This site is not allowed to use this chat widget');
+    }
+  }
 
   /** The chat channel configured for this organization, if any. */
   async channel() {

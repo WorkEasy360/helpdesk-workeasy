@@ -2,15 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ChevronRight } from 'lucide-react';
 import { loginSchema, type LoginInput } from '@digisoft/shared';
 import { ApiError } from '@/lib/api-client';
+import { safeReturnPath } from '@/lib/utils';
 import { authService } from '@/services/auth.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHydrated } from '@/hooks/use-hydrated';
+import { useRegistrationEnabled } from '@/hooks/use-registration-enabled';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/ui/form';
@@ -26,9 +28,13 @@ type OrganizationChoice = { slug: string; name: string };
  */
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Where an expired session or a deep link was heading before sign-in interrupted it.
+  const destination = safeReturnPath(searchParams.get('next'), '/dashboard');
   const setSession = useAuthStore((state) => state.setSession);
   const status = useAuthStore((state) => state.status);
   const hydrated = useHydrated();
+  const registrationEnabled = useRegistrationEnabled();
 
   const [organizations, setOrganizations] = useState<OrganizationChoice[] | null>(null);
   const [choosing, setChoosing] = useState(false);
@@ -44,9 +50,9 @@ export function LoginForm() {
 
   useEffect(() => {
     if (status === 'authenticated') {
-      router.replace('/dashboard');
+      router.replace(destination);
     }
-  }, [status, router]);
+  }, [status, router, destination]);
 
   const onSubmit = handleSubmit(async (values) => {
     try {
@@ -56,7 +62,7 @@ export function LoginForm() {
         return;
       }
       setSession(result.user, result.accessToken);
-      router.replace('/dashboard');
+      router.replace(destination);
     } catch (error) {
       const message =
         error instanceof ApiError ? error.message : 'Unable to sign in. Please try again.';
@@ -75,7 +81,7 @@ export function LoginForm() {
         throw new ApiError('INVALID_CREDENTIALS', 'Incorrect email address or password', 401);
       }
       setSession(result.user, result.accessToken);
-      router.replace('/dashboard');
+      router.replace(destination);
     } catch (error) {
       setChooseError(
         error instanceof ApiError ? error.message : 'Unable to sign in. Please try again.',
@@ -167,9 +173,11 @@ export function LoginForm() {
           <Link href="/forgot-password" className="text-muted-foreground hover:text-foreground">
             Forgot password?
           </Link>
-          <Link href="/register" className="text-muted-foreground hover:text-foreground">
-            Create an organization
-          </Link>
+          {registrationEnabled ? (
+            <Link href="/register" className="text-muted-foreground hover:text-foreground">
+              Create an organization
+            </Link>
+          ) : null}
         </div>
       </CardContent>
     </Card>

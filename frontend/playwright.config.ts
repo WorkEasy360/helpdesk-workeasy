@@ -1,9 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Drives the real frontend against the real API. Start both before running:
- *   pnpm --filter @digisoft/api dev
- *   pnpm --filter @digisoft/web dev
+ * Drives the real frontend against the real API. Start the API first (see
+ * ../backend); Playwright starts this app with `pnpm dev` unless one is already
+ * listening on the base URL.
  *
  * Set PLAYWRIGHT_CHROMIUM_EXECUTABLE when the machine already has a Chromium that
  * Playwright did not download itself (CI images, sandboxes).
@@ -20,6 +20,14 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
     trace: 'retain-on-failure',
   },
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : {
+        command: 'pnpm dev',
+        url: 'http://localhost:3000/login',
+        reuseExistingServer: true,
+        timeout: 120_000,
+      },
   projects: [
     {
       name: 'chromium',

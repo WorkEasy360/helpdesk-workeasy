@@ -1,0 +1,35 @@
+# Build context for api/Dockerfile and worker/Dockerfile (context: backend/).
+# Dependencies and build output are produced inside the image, never copied in.
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+**/coverage
+.pnpm-store
+
+# Secrets. Runtime configuration comes from env_file at `docker compose up`, never the image.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+
+# VCS, editor and OS noise
+.git
+.gitignore
+**/.DS_Store
+**/*.log
+
+# Not needed to build or run
+docs
+**/e2e
+**/test-results
+**/playwright-report
+api/test
+**/*.spec.ts
+docker-compose*.yml
+
+# Local attachment storage (STORAGE_PROVIDER=local). NOT packages/storage — that is source.
+/storage
+api/storage
+worker/storage
+.storage

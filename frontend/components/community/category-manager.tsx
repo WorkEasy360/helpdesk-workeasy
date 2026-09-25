@@ -8,6 +8,7 @@ import { CONTENT_VISIBILITIES } from '@digisoft/shared';
 import { ApiError } from '@/lib/api-client';
 import { communityService } from '@/services/community.service';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/form';
 import { Input, Select, Textarea } from '@/components/ui/input';
@@ -36,6 +37,7 @@ export function CommunityCategoryManager({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,7 +120,13 @@ export function CommunityCategoryManager({
                     variant="ghost"
                     size="icon"
                     aria-label={`Delete ${category.name}`}
-                    onClick={() => remove.mutate(category.id)}
+                    onClick={() =>
+                      void confirm({
+                        title: `Delete ${category.name}?`,
+                        confirmLabel: 'Delete category',
+                        onConfirm: () => remove.mutateAsync(category.id),
+                      })
+                    }
                   >
                     <Trash2 className="h-4 w-4" aria-hidden />
                   </Button>

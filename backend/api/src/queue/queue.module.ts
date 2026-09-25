@@ -1,4 +1,4 @@
-import { Global, Module, type OnApplicationShutdown } from '@nestjs/common';
+import { Global, Inject, Module, type OnApplicationShutdown } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
@@ -69,7 +69,34 @@ function queueFactory(name: string) {
   ],
 })
 export class QueueModule implements OnApplicationShutdown {
+  private readonly queues: Queue[];
+
+  constructor(
+    @Inject(EMAIL_QUEUE) email: Queue,
+    @Inject(NOTIFICATION_QUEUE) notifications: Queue,
+    @Inject(AUTOMATION_QUEUE_TOKEN) automation: Queue,
+    @Inject(SLA_QUEUE_TOKEN) sla: Queue,
+    @Inject(CHANNEL_QUEUE_TOKEN) channel: Queue,
+    @Inject(WEBHOOK_QUEUE_TOKEN) webhook: Queue,
+    @Inject(AI_QUEUE_TOKEN) ai: Queue,
+    @Inject(ANALYTICS_QUEUE_TOKEN) analytics: Queue,
+  ) {
+    this.queues = [email, notifications, automation, sla, channel, webhook, ai, analytics];
+  }
+
+  /**
+   * Each queue holds its own duplicated connection, which BullMQ does not close for a
+   * connection it was handed — so the queue is closed first, then its connection.
+   */
   async onApplicationShutdown(): Promise<void> {
-    // Queue connections are duplicated from the shared Redis client and closed with it.
+    await Promise.allSettled(
+      this.queues.map(async (queue) => {
+        await queue.close();
+        const connection = queue.opts.connection as Redis;
+        if (connection.status !== 'end') {
+          await connection.quit().catch(() => connection.disconnect());
+        }
+      }),
+    );
   }
 }

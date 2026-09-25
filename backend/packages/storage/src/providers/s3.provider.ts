@@ -49,6 +49,8 @@ export class S3StorageProvider implements StorageProvider {
   }
 
   async download(key: string, fileName: string, contentType: string): Promise<DownloadTarget> {
+    // Taken before signing, so the reported expiry is never later than the real one.
+    const expiresAt = new Date(Date.now() + this.options.signedUrlTtl * 1000);
     const url = await getSignedUrl(
       this.client,
       new GetObjectCommand({
@@ -60,7 +62,7 @@ export class S3StorageProvider implements StorageProvider {
       }),
       { expiresIn: this.options.signedUrlTtl },
     );
-    return { url };
+    return { url, expiresAt };
   }
 
   async remove(key: string): Promise<void> {

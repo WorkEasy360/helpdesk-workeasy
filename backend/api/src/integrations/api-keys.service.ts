@@ -5,6 +5,7 @@ import type { ApiKeyInput, AuthenticatedUser } from '@digisoft/shared';
 import { TENANT_PRISMA } from '../prisma/prisma.module';
 import { AppError } from '../common/errors/app-error';
 import { AuditService } from '../audit/audit.service';
+import { assertCanGrantRoles } from '../auth/role-grant';
 
 const KEY_SELECT = {
   id: true,
@@ -38,11 +39,17 @@ export class ApiKeysService {
   async create(actor: AuthenticatedUser, input: ApiKeyInput) {
     const role = await this.db.role.findFirst({
       where: { id: input.roleId },
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        permissions: { select: { permission: { select: { key: true } } } },
+      },
     });
     if (!role) {
       throw AppError.validation('The selected role does not exist');
     }
+    // A key acts with its role's permissions; it must not outrank whoever created it.
+    assertCanGrantRoles(actor, [role]);
 
     // `dsk_<random>`: the prefix is stored so a key can be recognised in a list.
     const secret = randomBytes(24).toString('base64url');

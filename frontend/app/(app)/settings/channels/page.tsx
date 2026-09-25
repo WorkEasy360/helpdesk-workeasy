@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { formatDateTime } from '@/lib/utils';
 import type { Channel } from '@/types/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,7 @@ import { ChannelDialog, CHANNEL_LABELS } from '@/components/channels/channel-dia
 
 export default function ChannelsPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const can = useAuthStore((state) => state.can);
   const manage = can(PERMISSIONS.CHANNEL_MANAGE);
 
@@ -208,7 +210,14 @@ export default function ChannelsPage() {
                           variant="ghost"
                           size="icon"
                           aria-label={`Delete ${channel.name}`}
-                          onClick={() => remove.mutate(channel.id)}
+                          onClick={() =>
+                            void confirm({
+                              title: `Delete ${channel.name}?`,
+                              description: 'Messages will no longer be received on this channel.',
+                              confirmLabel: 'Delete channel',
+                              onConfirm: () => remove.mutateAsync(channel.id),
+                            })
+                          }
                         >
                           <Trash2 className="h-4 w-4" aria-hidden />
                         </Button>

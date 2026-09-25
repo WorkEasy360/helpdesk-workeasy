@@ -28,7 +28,22 @@ function testDatabaseUrl(inherited) {
 }
 
 process.env.DATABASE_URL = testDatabaseUrl(process.env.DATABASE_URL);
-process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+/**
+ * Suites that exercise the portal call FLUSHDB between tests. For the same reason as the
+ * database, an inherited REDIS_URL is moved onto logical database 15 so the flush can
+ * only ever empty the tests' own keyspace, never the one a dev server is using.
+ */
+function testRedisUrl(inherited) {
+  try {
+    const url = new URL(inherited || 'redis://localhost:6379');
+    url.pathname = '/15';
+    return url.toString();
+  } catch {
+    return 'redis://localhost:6379/15';
+  }
+}
+
+process.env.REDIS_URL = testRedisUrl(process.env.REDIS_URL);
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-that-is-long-enough-000000';
 process.env.JWT_REFRESH_SECRET =
   process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-that-is-long-enough-0';

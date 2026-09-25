@@ -163,6 +163,29 @@ describe('Authentication (e2e)', () => {
       await request(http).get(apiPath('/auth/me')).set('Authorization', `Bearer ${token}`).expect(200);
     });
 
+    it('lets a signed-in user edit their own profile, and nothing else, with PATCH /auth/me', async () => {
+      const login = await request(http)
+        .post(apiPath('/auth/login'))
+        .send({ email: ORG.email, password: ORG.password })
+        .expect(200);
+      const bearer = { Authorization: `Bearer ${login.body.data.accessToken as string}` };
+
+      const updated = await request(http)
+        .patch(apiPath('/auth/me'))
+        .set(bearer)
+        .send({ firstName: 'Augusta', phone: '+44 20 7946 0000', email: 'hijack@example.com' })
+        .expect(200);
+      expect(updated.body.data).toMatchObject({ firstName: 'Augusta', lastName: ORG.lastName, email: ORG.email });
+
+      const me = await request(http).get(apiPath('/auth/me')).set(bearer).expect(200);
+      expect(me.body.data.firstName).toBe('Augusta');
+      const stored = await harness.prisma.user.findFirstOrThrow({ select: { email: true, phone: true } });
+      expect(stored).toEqual({ email: ORG.email, phone: '+44 20 7946 0000' });
+
+      await request(http).patch(apiPath('/auth/me')).set(bearer).send({ firstName: '' }).expect(400);
+      await request(http).patch(apiPath('/auth/me')).send({ firstName: 'Nobody' }).expect(401);
+    });
+
     it('revokes every session when the password is changed', async () => {
       const login = await request(http)
         .post(apiPath('/auth/login'))
@@ -195,7 +218,8 @@ describe('Authentication (e2e)', () => {
       firstName: 'Beth',
       lastName: 'Admin',
       email: ORG.email,
-      password: 'An0therPassword2',
+      // The same password in both: only then is the address genuinely ambiguous.
+      password: ORG.password,
     };
 
     beforeEach(async () => {
@@ -229,6 +253,25 @@ describe('Authentication (e2e)', () => {
       expect(response.body.data.user.email).toBe(ORG.email);
       const cookie = (response.headers['set-cookie'] as unknown as string[])[0];
       expect(cookie).toContain('ds_refresh=');
+    });
+
+    it('signs straight in when the password matches only one of the accounts', async () => {
+      const second = await request(http)
+        .post(apiPath('/auth/login'))
+        .send({ email: ORG.email, password: ORG.password, organizationSlug: OTHER_ORG.organizationSlug })
+        .expect(200);
+      await request(http)
+        .post(apiPath('/auth/change-password'))
+        .set('Authorization', `Bearer ${second.body.data.accessToken as string}`)
+        .send({ currentPassword: ORG.password, newPassword: 'An0therPassword2' })
+        .expect(200);
+
+      const response = await request(http)
+        .post(apiPath('/auth/login'))
+        .send({ email: ORG.email, password: ORG.password })
+        .expect(200);
+      expect(response.body.data.status).toBe('authenticated');
+      expect(response.body.data.user.firstName).toBe(ORG.firstName);
     });
 
     it('gives the same generic answer for a wrong password whether the address is shared or not', async () => {

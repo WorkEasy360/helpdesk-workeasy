@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type {
+  AuthenticatedUser,
   ChangePasswordInput,
   ForgotPasswordInput,
   LoginInput,
@@ -8,6 +9,7 @@ import type {
   OrganizationChoiceResponse,
   RegisterInput,
   ResetPasswordInput,
+  UpdateUserInput,
 } from '@digisoft/shared';
 import { SYSTEM_ROLES } from '@digisoft/shared';
 import type { TokenType } from '@digisoft/db';
@@ -37,6 +39,8 @@ export interface SessionResult extends LoginResponse {
 
 const PASSWORD_RESET_TTL_MINUTES = 60;
 const EMAIL_VERIFICATION_TTL_HOURS = 48;
+/** Upper bound on reset emails one request can trigger for a single address. */
+const MAX_RESET_ACCOUNTS = 10;
 
 /**
  * Platform-level module: it runs before a tenant context exists, so it uses the
@@ -196,7 +200,15 @@ export class AuthService {
     return this.createSession(candidate.id, candidate.organizationId, meta);
   }
 
-  async refresh(rawToken: string, meta: RequestMeta): Promise<SessionResult> {
+  /**
+   * `audience` pins the session to one organization and account type — the portal's
+   * refresh endpoint only ever renews a customer session for its own help center.
+   */
+  async refresh(
+    rawToken: string,
+    meta: RequestMeta,
+    audience?: { organizationId: string; type: 'AGENT' | 'CUSTOMER' },
+  ): Promise<SessionResult> {
     const tokenHash = this.tokens.hashRefreshToken(rawToken);
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
@@ -230,6 +242,17 @@ export class AuthService {
       throw AppError.unauthenticated('Session has expired', 'TOKEN_EXPIRED');
     }
 
+    if (audience) {
+      const owner = await this.prisma.user.findUnique({
+        where: { id: stored.userId },
+        select: { type: true },
+      });
+      // Not revoked: the token is valid, just presented at the wrong door.
+      if (stored.organizationId !== audience.organizationId || owner?.type !== audience.type) {
+        throw AppError.unauthenticated('Invalid session', 'TOKEN_EXPIRED');
+      }
+    }
+
     await this.prisma.refreshToken.update({
       where: { id: stored.id },
       data: { revokedAt: new Date() },
@@ -259,39 +282,53 @@ export class AuthService {
   /**
    * `resetPath` lets the portal point a customer at its own reset page instead of the
    * agent one; everything else about the flow is identical.
+   *
+   * Without an organization slug the same address may be an account in several
+   * organizations. Each gets its own reset email naming its organization — picking
+   * one would strand the others, and asking the caller to choose would reveal which
+   * organizations the address belongs to. The response is identical in every case.
    */
   async forgotPassword(input: ForgotPasswordInput, resetPath = '/reset-password'): Promise<void> {
-    const user = await this.prisma.user.findFirst({
+    const users = await this.prisma.user.findMany({
       where: {
         email: input.email,
         deletedAt: null,
         isActive: true,
-        ...(input.organizationSlug ? { organization: { slug: input.organizationSlug } } : {}),
+        ...(input.organizationSlug
+          ? { organization: { slug: input.organizationSlug, deletedAt: null } }
+          : { organization: { deletedAt: null } }),
       },
-      select: { id: true, firstName: true, email: true, organizationId: true },
+      select: {
+        id: true,
+        firstName: true,
+        email: true,
+        organizationId: true,
+        organization: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: MAX_RESET_ACCOUNTS,
     });
 
     // Always succeed: the response must not reveal whether the address exists.
-    if (!user) {
-      return;
+    for (const user of users) {
+      const { raw, hash } = this.createOpaqueToken();
+      await this.prisma.verificationToken.create({
+        data: {
+          userId: user.id,
+          type: 'PASSWORD_RESET',
+          tokenHash: hash,
+          expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000),
+        },
+      });
+
+      await this.mailer.send(user.organizationId, user.email, {
+        kind: 'reset-password',
+        firstName: user.firstName,
+        url: `${this.mailer.frontendUrl}${resetPath}?token=${raw}`,
+        expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
+        ...(users.length > 1 ? { organizationName: user.organization.name } : {}),
+      });
     }
-
-    const { raw, hash } = this.createOpaqueToken();
-    await this.prisma.verificationToken.create({
-      data: {
-        userId: user.id,
-        type: 'PASSWORD_RESET',
-        tokenHash: hash,
-        expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000),
-      },
-    });
-
-    await this.mailer.send(user.organizationId, user.email, {
-      kind: 'reset-password',
-      firstName: user.firstName,
-      url: `${this.mailer.frontendUrl}${resetPath}?token=${raw}`,
-      expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
-    });
   }
 
   async resetPassword(input: ResetPasswordInput): Promise<void> {
@@ -400,6 +437,25 @@ export class AuthService {
     await this.mailer.send(organizationId, user.email, {
       kind: 'password-changed',
       firstName: user.firstName,
+    });
+  }
+
+  /**
+   * Self-service profile edit. Only the caller's own presentational fields — never
+   * email, roles, status or organization, which stay with user administration.
+   */
+  async updateProfile(actor: AuthenticatedUser, input: UpdateUserInput): Promise<AuthenticatedUser> {
+    const { firstName, lastName, phone, avatarUrl } = input;
+    await this.prisma.user.update({
+      where: { id: actor.id, organizationId: actor.organizationId },
+      data: { firstName, lastName, phone, avatarUrl },
+    });
+    await this.accessControl.invalidateUser(actor.organizationId, actor.id);
+    return this.accessControl.resolveUser({
+      sub: actor.id,
+      org: actor.organizationId,
+      email: actor.email,
+      typ: actor.type,
     });
   }
 

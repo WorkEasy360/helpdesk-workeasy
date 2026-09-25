@@ -4,7 +4,8 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfig, AppConfigModule } from './config/config.module';
 import { PrismaModule } from './prisma/prisma.module';
-import { RedisModule } from './redis/redis.module';
+import type { Redis } from 'ioredis';
+import { REDIS_CLIENT, RedisModule } from './redis/redis.module';
 import { QueueModule } from './queue/queue.module';
 import { EmailModule } from './email/email.module';
 import { AuditModule } from './audit/audit.module';
@@ -42,6 +43,8 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
 import { PermissionCatalogueService } from './bootstrap/permission-catalogue.service';
+import { buildThrottlerOptions } from './common/throttler/throttler.options';
+import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storage';
 
 @Module({
   imports: [
@@ -68,26 +71,23 @@ import { PermissionCatalogueService } from './bootstrap/permission-catalogue.ser
         },
       }),
     }),
+    // Imported ahead of the throttler so the Redis client is available to its storage.
+    RedisModule,
     ThrottlerModule.forRootAsync({
-      inject: [AppConfig],
-      useFactory: (config: AppConfig) => ({
-        skipIf: () => !config.get('THROTTLE_ENABLED'),
-        throttlers: [
+      inject: [AppConfig, REDIS_CLIENT],
+      useFactory: (config: AppConfig, redis: Redis) =>
+        buildThrottlerOptions(
           {
-            name: 'default',
-            ttl: config.get('THROTTLE_TTL_SECONDS') * 1000,
+            enabled: config.get('THROTTLE_ENABLED'),
+            ttlSeconds: config.get('THROTTLE_TTL_SECONDS'),
             limit: config.get('THROTTLE_LIMIT'),
+            authLimit: config.get('AUTH_THROTTLE_LIMIT'),
           },
-          {
-            name: 'auth',
-            ttl: 60_000,
-            limit: config.get('AUTH_THROTTLE_LIMIT'),
-          },
-        ],
-      }),
+          // Shared counters: limits hold across every API instance, not per process.
+          new RedisThrottlerStorage(redis),
+        ),
     }),
     PrismaModule,
-    RedisModule,
     QueueModule,
     EmailModule,
     AuditModule,

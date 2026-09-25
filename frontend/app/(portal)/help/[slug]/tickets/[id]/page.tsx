@@ -1,7 +1,8 @@
 'use client';
 
-import { use, useRef, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, Paperclip, Send } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/input';
 import { ErrorState, LoadingState } from '@/components/ui/states';
+import { usePortalSession } from '@/components/portal/portal-session';
 
 export default function PortalTicketPage({ params }: { params: Promise<{ slug: string; id: string }> }) {
   const { slug, id } = use(params);
@@ -22,7 +24,21 @@ export default function PortalTicketPage({ params }: { params: Promise<{ slug: s
   const [body, setBody] = useState('');
   const [attachments, setAttachments] = useState<{ id: string; fileName: string }[]>([]);
 
-  const ticket = useQuery({ queryKey: ['portal-ticket', slug, id], queryFn: () => api.ticket(id) });
+  const router = useRouter();
+  const session = usePortalSession();
+
+  const ticket = useQuery({
+    queryKey: ['portal-ticket', slug, id],
+    queryFn: () => api.ticket(id),
+    enabled: session.status === 'signed-in',
+  });
+
+  // A signed-out visitor following an emailed link signs in and comes straight back here.
+  useEffect(() => {
+    if (session.status === 'anonymous') {
+      router.replace(`/help/${slug}/login?next=${encodeURIComponent(`tickets/${id}`)}`);
+    }
+  }, [session.status, router, slug, id]);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['portal-ticket', slug, id] });
 
@@ -52,12 +68,18 @@ export default function PortalTicketPage({ params }: { params: Promise<{ slug: s
     onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Unable to close the request.'),
   });
 
+  if (session.status === 'anonymous') {
+    return <LoadingState label="Taking you to sign in…" />;
+  }
   if (ticket.isPending) {
     return <LoadingState />;
   }
   if (ticket.isError) {
     return (
-      <ErrorState message={ticket.error instanceof ApiError ? ticket.error.message : 'Unable to load this request.'} />
+      <ErrorState
+        message={ticket.error instanceof ApiError ? ticket.error.message : 'Unable to load this request.'}
+        onRetry={() => ticket.refetch()}
+      />
     );
   }
 
@@ -115,15 +137,24 @@ export default function PortalTicketPage({ params }: { params: Promise<{ slug: s
                   <ul className="flex flex-wrap gap-2 pt-1">
                     {message.attachments.map((attachment) => (
                       <li key={attachment.id}>
-                        <a
+                        <button
+                          type="button"
                           className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-                          href={`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1'}${api.attachmentUrl(attachment.id)}`}
-                          target="_blank"
-                          rel="noreferrer"
+                          onClick={() =>
+                            api
+                              .downloadAttachment(attachment.id, attachment.fileName)
+                              .catch((error: unknown) =>
+                                toast.error(
+                                  error instanceof ApiError && error.status !== 0
+                                    ? error.message
+                                    : 'Unable to download this file.',
+                                ),
+                              )
+                          }
                         >
                           <Paperclip className="h-3 w-3" aria-hidden />
                           {attachment.fileName}
-                        </a>
+                        </button>
                       </li>
                     ))}
                   </ul>

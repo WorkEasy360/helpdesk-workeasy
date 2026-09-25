@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from 'node:crypto';
-import type { Job } from 'bullmq';
+import { UnrecoverableError, type Job } from 'bullmq';
+import { safeFetch, UnsafeUrlError } from '@digisoft/channels';
 import type { Logger } from 'pino';
 import type { PrismaClient } from '@digisoft/db';
 
@@ -50,11 +51,10 @@ export async function handleWebhookDelivery(
     .update(`${timestamp}.${body}`)
     .digest('hex');
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
   try {
-    const response = await fetch(delivery.endpoint.url, {
+    // The endpoint URL is customer-supplied: the guard resolves it and refuses internal
+    // addresses on every attempt, since DNS can change between creation and delivery.
+    const response = await safeFetch(delivery.endpoint.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -66,10 +66,13 @@ export async function handleWebhookDelivery(
         'Idempotency-Key': `${delivery.id}-${randomUUID()}`,
       },
       body,
-      signal: controller.signal,
+      timeoutMs: TIMEOUT_MS,
+      // Only a snippet is kept, so a huge response is cut rather than buffered.
+      maxBytes: BODY_SNIPPET * 4,
+      onOverflow: 'truncate',
     });
 
-    const responseBody = (await response.text().catch(() => '')).slice(0, BODY_SNIPPET);
+    const responseBody = response.body.toString('utf8').slice(0, BODY_SNIPPET);
     const delivered = response.ok;
 
     await deps.prisma.$transaction([
@@ -98,11 +101,13 @@ export async function handleWebhookDelivery(
     return { delivered: true, status: response.status };
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Delivery failed';
+    // A refused target will be refused again; retrying only delays the verdict.
+    const unsafe = error instanceof UnsafeUrlError;
     await deps.prisma.webhookDelivery.update({
       where: { id: delivery.id },
       data: {
         attempts: attempt,
-        status: attempt >= deps.maxAttempts ? 'FAILED' : 'PENDING',
+        status: unsafe || attempt >= deps.maxAttempts ? 'FAILED' : 'PENDING',
         error: reason.slice(0, 500),
       },
     });
@@ -110,8 +115,6 @@ export async function handleWebhookDelivery(
       { deliveryId: delivery.id, attempt, event: delivery.event },
       `Webhook delivery failed: ${reason}`,
     );
-    throw error;
-  } finally {
-    clearTimeout(timer);
+    throw unsafe ? new UnrecoverableError(reason) : error;
   }
 }

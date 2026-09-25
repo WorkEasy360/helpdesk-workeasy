@@ -11,12 +11,48 @@ import { analyticsService } from '@/services/analytics.service';
 import { ticketsService } from '@/services/tickets.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { PageHeader } from '@/components/layout/page-header';
-import { ReportFilters, toQuery, type ReportFilterValue } from '@/components/reports/report-filters';
+import {
+  ReportFilters,
+  toQuery,
+  type ReportFilterValue,
+} from '@/components/reports/report-filters';
 import { StatTile, formatMinutes, formatPercent } from '@/components/reports/stat-tile';
 import { TrendChart } from '@/components/reports/trend-chart';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState, LoadingState } from '@/components/ui/states';
 import { ApiError } from '@/lib/api-client';
+
+const DAY_MS = 86_400_000;
+
+function utcDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+/**
+ * The creation window the dashboard counts, as inclusive YYYY-MM-DD bounds. Mirrors
+ * the API's range presets, which are whole UTC days ending today — and the ticket list
+ * reads a bare date as a UTC day too, so the linked list matches the tile's count.
+ */
+function createdWindow(
+  filters: ReportFilterValue,
+  now: Date = new Date(),
+): { from: string; to: string } {
+  const today = utcDate(now);
+  const daysBack = (days: number) => utcDate(new Date(now.getTime() - days * DAY_MS));
+  switch (filters.range) {
+    case 'today':
+      return { from: today, to: today };
+    case '7d':
+      return { from: daysBack(6), to: today };
+    case '90d':
+      return { from: daysBack(89), to: today };
+    case 'custom':
+      return { from: (filters.from ?? today).slice(0, 10), to: (filters.to ?? today).slice(0, 10) };
+    case '30d':
+    default:
+      return { from: daysBack(29), to: today };
+  }
+}
 
 function StatCard({
   label,
@@ -83,10 +119,32 @@ export default function DashboardPage() {
     enabled: can(PERMISSIONS.TICKET_READ),
   });
 
+  // Deep links into the ticket list's URL state, filtered the way each tile counts.
+  const created = createdWindow(filters);
+  const ticketLinks = {
+    // Counts tickets created in the report range.
+    created: `/tickets?${new URLSearchParams({
+      view: 'all',
+      createdFrom: created.from,
+      createdTo: created.to,
+      sort: 'createdAt',
+      order: 'desc',
+    }).toString()}`,
+    // Counts tickets resolved in the range (by resolution time). The list can only
+    // filter by creation date, so this opens every ticket currently resolved.
+    resolved: '/tickets?view=all&statusCategory=resolved',
+    open: '/tickets?view=all&statusCategory=open',
+    unassigned: '/tickets?view=unassigned',
+    overdue: '/tickets?view=all&overdue=true&sort=dueAt&order=asc',
+    mine: '/tickets?view=mine',
+  };
+
   const overviewFailed = [contacts, accounts, users, departments].find((query) => query.isError);
   if (overviewFailed?.error) {
     const message =
-      overviewFailed.error instanceof ApiError ? overviewFailed.error.message : 'Unable to load the dashboard.';
+      overviewFailed.error instanceof ApiError
+        ? overviewFailed.error.message
+        : 'Unable to load the dashboard.';
     return <ErrorState message={message} onRetry={() => overviewFailed.refetch()} />;
   }
 
@@ -99,13 +157,28 @@ export default function DashboardPage() {
 
       <section aria-label="Overview" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {can(PERMISSIONS.CONTACT_READ) ? (
-          <StatCard label="Contacts" value={contacts.data?.meta.total} loading={contacts.isPending} href="/customers" />
+          <StatCard
+            label="Contacts"
+            value={contacts.data?.meta.total}
+            loading={contacts.isPending}
+            href="/customers"
+          />
         ) : null}
         {can(PERMISSIONS.ACCOUNT_READ) ? (
-          <StatCard label="Accounts" value={accounts.data?.meta.total} loading={accounts.isPending} href="/accounts" />
+          <StatCard
+            label="Accounts"
+            value={accounts.data?.meta.total}
+            loading={accounts.isPending}
+            href="/accounts"
+          />
         ) : null}
         {can(PERMISSIONS.USER_READ) ? (
-          <StatCard label="Agents" value={users.data?.meta.total} loading={users.isPending} href="/settings/users" />
+          <StatCard
+            label="Agents"
+            value={users.data?.meta.total}
+            loading={users.isPending}
+            href="/settings/users"
+          />
         ) : null}
         {can(PERMISSIONS.DEPARTMENT_READ) ? (
           <StatCard
@@ -126,38 +199,62 @@ export default function DashboardPage() {
           ) : dashboard.isError ? (
             <ErrorState
               message={
-                dashboard.error instanceof ApiError ? dashboard.error.message : 'Unable to load the dashboard.'
+                dashboard.error instanceof ApiError
+                  ? dashboard.error.message
+                  : 'Unable to load the dashboard.'
               }
               onRetry={() => dashboard.refetch()}
             />
           ) : (
             <>
-              <section aria-label="Ticket volume" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <Link href="/tickets">
+              <section
+                aria-label="Ticket volume"
+                className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+              >
+                <Link href={ticketLinks.created}>
                   <StatTile label="Created" value={String(dashboard.data.tickets.created)} />
                 </Link>
-                <Link href="/tickets">
+                <Link href={ticketLinks.resolved}>
                   <StatTile label="Resolved" value={String(dashboard.data.tickets.resolved)} />
                 </Link>
-                <StatTile
-                  label="Open now"
-                  value={String(dashboard.data.tickets.open)}
-                  sub={`${dashboard.data.tickets.unassigned} unassigned`}
-                  tone={dashboard.data.tickets.unassigned > 0 ? 'warning' : 'default'}
-                />
-                <StatTile
-                  label="Overdue"
-                  value={String(dashboard.data.tickets.overdue)}
-                  tone={dashboard.data.tickets.overdue > 0 ? 'danger' : 'default'}
-                />
+                <Link href={ticketLinks.open}>
+                  <StatTile
+                    label="Open now"
+                    value={String(dashboard.data.tickets.open)}
+                    sub={`${dashboard.data.tickets.unassigned} unassigned`}
+                    tone={dashboard.data.tickets.unassigned > 0 ? 'warning' : 'default'}
+                  />
+                </Link>
+                <Link href={ticketLinks.overdue}>
+                  <StatTile
+                    label="Overdue"
+                    value={String(dashboard.data.tickets.overdue)}
+                    tone={dashboard.data.tickets.overdue > 0 ? 'danger' : 'default'}
+                  />
+                </Link>
                 {ticketSummary.data ? (
-                  <Link href="/tickets">
-                    <StatTile label="Assigned to me" value={String(ticketSummary.data.assignedToMe)} />
+                  <Link href={ticketLinks.mine}>
+                    <StatTile
+                      label="Assigned to me"
+                      value={String(ticketSummary.data.assignedToMe)}
+                    />
+                  </Link>
+                ) : null}
+                {ticketSummary.data ? (
+                  <Link href={ticketLinks.unassigned}>
+                    <StatTile
+                      label="Unassigned"
+                      value={String(ticketSummary.data.unassigned)}
+                      tone={ticketSummary.data.unassigned > 0 ? 'warning' : 'default'}
+                    />
                   </Link>
                 ) : null}
               </section>
 
-              <section aria-label="SLA and satisfaction" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <section
+                aria-label="SLA and satisfaction"
+                className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+              >
                 <StatTile
                   label="Avg first response"
                   value={formatMinutes(dashboard.data.tickets.avgFirstResponseMinutes)}
@@ -175,7 +272,9 @@ export default function DashboardPage() {
                 <StatTile
                   label="CSAT"
                   value={
-                    dashboard.data.csat.average !== null ? `${dashboard.data.csat.average.toFixed(1)} / 5` : '—'
+                    dashboard.data.csat.average !== null
+                      ? `${dashboard.data.csat.average.toFixed(1)} / 5`
+                      : '—'
                   }
                   sub={
                     dashboard.data.csat.responses > 0
@@ -211,7 +310,10 @@ export default function DashboardPage() {
                   <CardContent>
                     <ul className="divide-y divide-border">
                       {dashboard.data.topAgents.map((agent) => (
-                        <li key={agent.agentId} className="flex items-center justify-between py-2 text-sm">
+                        <li
+                          key={agent.agentId}
+                          className="flex items-center justify-between py-2 text-sm"
+                        >
                           <span>{agent.name}</span>
                           <span className="text-muted-foreground">
                             {agent.resolved} resolved · {agent.publicReplies} replies

@@ -30,6 +30,10 @@ export const telegramProvider: ChannelProvider = {
   key: 'telegram',
   type: 'TELEGRAM',
 
+  hasProviderAuth(secrets: ChannelSecrets): boolean {
+    return Boolean(secrets['secretToken']);
+  },
+
   verify(input: VerifyInput, secrets: ChannelSecrets): boolean {
     const expected = secrets['secretToken'];
     if (!expected) {

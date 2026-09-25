@@ -12,14 +12,27 @@ import { provisionHelpCenter } from '../src/portal-provisioning';
 
 const prisma = new PrismaClient();
 
+const DEFAULT_ADMIN_PASSWORD = 'ChangeMe123!';
+
 const DEMO = {
   organizationName: 'Digisoft360 Demo',
   organizationSlug: 'demo',
   adminEmail: process.env.SEED_ADMIN_EMAIL ?? 'admin@digisoft360.local',
-  adminPassword: process.env.SEED_ADMIN_PASSWORD ?? 'ChangeMe123!',
+  adminPassword: process.env.SEED_ADMIN_PASSWORD ?? DEFAULT_ADMIN_PASSWORD,
 };
 
 async function main(): Promise<void> {
+  // The demo admin is a Super Admin with a published password; a production database
+  // must never get one by accident.
+  if (
+    process.env.NODE_ENV === 'production' &&
+    (!process.env.SEED_ADMIN_PASSWORD || process.env.SEED_ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD)
+  ) {
+    throw new Error(
+      'Refusing to seed in production without SEED_ADMIN_PASSWORD set to something other than the default',
+    );
+  }
+
   await syncPermissionCatalogue(prisma);
 
   // Organizations created before a phase added new configuration need it backfilled.

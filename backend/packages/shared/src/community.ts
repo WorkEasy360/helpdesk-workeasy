@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './pagination';
-import { optionalField, queryBoolean } from './field';
+import { optionalField, queryBoolean, patchSchema } from './field';
 import { CONTENT_VISIBILITIES } from './kb';
 import { slugSchema } from './slug';
 
@@ -24,7 +24,7 @@ export const communityCategorySchema = z.object({
 export type CommunityCategoryInput = z.infer<typeof communityCategorySchema>;
 export type CommunityCategoryFormValues = z.input<typeof communityCategorySchema>;
 
-export const updateCommunityCategorySchema = communityCategorySchema.partial();
+export const updateCommunityCategorySchema = patchSchema(communityCategorySchema);
 export type UpdateCommunityCategoryInput = z.infer<typeof updateCommunityCategorySchema>;
 
 export const createTopicSchema = z.object({

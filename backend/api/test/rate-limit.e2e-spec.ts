@@ -17,11 +17,37 @@ describe('Rate limiting (e2e)', () => {
   beforeAll(async () => {
     harness = await createHarness();
     http = harness.app.getHttpServer() as Server;
-    await resetDatabase(harness.prisma);
+    // Throttle counters live in Redis; a rerun inside the window must start from zero.
+    await resetDatabase(harness.prisma, harness.redis);
   });
 
   afterAll(async () => {
     await harness.close();
+  });
+
+  // The auth throttler (AUTH_THROTTLE_LIMIT, 10 a minute) is opt-in per route; an
+  // ordinary API call or a health probe must not hit it.
+  it('does not hold ordinary routes or health probes to the auth limit', async () => {
+    const register = await request(http)
+      .post(apiPath('/auth/register'))
+      .send({
+        organizationName: 'Throttle Co',
+        organizationSlug: 'throttle',
+        firstName: 'Ada',
+        lastName: 'Admin',
+        email: 'ada@throttle.example',
+        password: 'Str0ngPassword1',
+      })
+      .expect(201);
+    const auth = { Authorization: `Bearer ${register.body.data.accessToken as string}` };
+
+    const statuses: number[] = [];
+    for (let i = 0; i < 25; i += 1) {
+      statuses.push((await request(http).get(apiPath('/tickets')).set(auth)).status);
+      statuses.push((await request(http).get(apiPath('/auth/me')).set(auth)).status);
+      statuses.push((await request(http).get(apiPath('/health/live'))).status);
+    }
+    expect(statuses.every((status) => status === 200)).toBe(true);
   });
 
   it('throttles repeated failed logins instead of letting them run unbounded', async () => {

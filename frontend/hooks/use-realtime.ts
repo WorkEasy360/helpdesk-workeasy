@@ -3,10 +3,10 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { io, type Socket } from 'socket.io-client';
-import { getAccessToken } from '@/lib/api-client';
+import { getAccessToken, refreshAccessToken } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth.store';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? 'http://localhost:4000';
+import { SOCKET_URL } from '@/lib/env';
 
 const TICKET_EVENTS = [
   'ticket.created',
@@ -29,15 +29,67 @@ export function useRealtime(): void {
     if (status !== 'authenticated') {
       return;
     }
-    const token = getAccessToken();
-    if (!token) {
+    if (!getAccessToken()) {
       return;
     }
 
+    // The callback form is re-evaluated on every (re)connection attempt, so a socket
+    // always presents the latest access token rather than the one it was opened with.
     const socket: Socket = io(`${SOCKET_URL}/rt`, {
-      auth: { token },
+      auth: (cb) => cb({ token: getAccessToken() }),
       transports: ['websocket'],
       withCredentials: true,
+    });
+
+    // The server drops a socket when its access token expires — announcing it with
+    // `session.expired` first — and refuses handshakes with a stale token. Socket.IO does
+    // not reconnect after a server-side disconnect or rejection on its own, so refresh
+    // the agent token through the same path the HTTP client uses and reconnect. Bounded
+    // and backed off, so a revoked session cannot spin in a loop: when the refresh fails
+    // the socket stays down and the next API call's 401 signs the user out as usual.
+    let closed = false;
+    let attempts = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let stableTimer: ReturnType<typeof setTimeout> | undefined;
+    const reconnectWithFreshToken = () => {
+      // `session.expired` and the disconnect that follows it ask for the same retry.
+      if (closed || retryTimer !== undefined || attempts >= 3) {
+        return;
+      }
+      attempts += 1;
+      const delay = 500 * 2 ** (attempts - 1);
+      retryTimer = setTimeout(() => {
+        void refreshAccessToken({ portalSlug: null }).then((fresh) => {
+          retryTimer = undefined;
+          if (fresh && !closed && !socket.connected) {
+            socket.connect();
+          }
+        });
+      }, delay);
+    };
+
+    // The server also accepts and then immediately drops a socket it will not serve (a
+    // foreign origin, an unresolvable user), so the budget is only restored once a
+    // connection has actually held.
+    socket.on('connect', () => {
+      clearTimeout(stableTimer);
+      stableTimer = setTimeout(() => {
+        attempts = 0;
+      }, 10_000);
+    });
+    socket.on('session.expired', reconnectWithFreshToken);
+    socket.on('connect_error', () => {
+      // `active` is false when the server (auth middleware) rejected the handshake;
+      // transport-level failures keep retrying on socket.io's own backoff.
+      if (!socket.active) {
+        reconnectWithFreshToken();
+      }
+    });
+    socket.on('disconnect', (reason) => {
+      clearTimeout(stableTimer);
+      if (reason === 'io server disconnect') {
+        reconnectWithFreshToken();
+      }
     });
 
     for (const event of TICKET_EVENTS) {
@@ -60,6 +112,9 @@ export function useRealtime(): void {
     });
 
     return () => {
+      closed = true;
+      clearTimeout(retryTimer);
+      clearTimeout(stableTimer);
       socket.close();
     };
   }, [status, queryClient]);

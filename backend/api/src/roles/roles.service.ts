@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AppError } from '../common/errors/app-error';
 import { AuditService } from '../audit/audit.service';
 import { AccessControlService } from '../auth/access-control.service';
+import { assertCanGrantPermissions } from '../auth/role-grant';
 
 const ROLE_FIELDS = {
   id: true,
@@ -49,6 +50,7 @@ export class RolesService {
   }
 
   async create(actor: AuthenticatedUser, input: CreateRoleInput) {
+    assertCanGrantPermissions(actor, input.permissionKeys);
     const permissionIds = await this.resolvePermissionIds(input.permissionKeys);
     const role = await this.db.role.create({
       data: {
@@ -75,6 +77,14 @@ export class RolesService {
     const before = await this.findById(id);
     if (before.isSystem && input.permissionKeys) {
       throw AppError.validation('Permissions of a system role cannot be changed');
+    }
+    if (input.permissionKeys) {
+      // Editing a role is granting to everyone who holds it, the caller included, so
+      // both the permissions added and those removed must be within the caller's own.
+      assertCanGrantPermissions(actor, [
+        ...input.permissionKeys,
+        ...before.permissions.map((link) => link.permission.key),
+      ]);
     }
 
     const permissionIds = input.permissionKeys

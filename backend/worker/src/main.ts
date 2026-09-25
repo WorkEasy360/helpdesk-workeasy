@@ -30,10 +30,21 @@ const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
 const prisma = new PrismaClient();
 const emailProvider = createEmailProvider(env);
 
-const emailQueue = new Queue('email', { connection: connection.duplicate() });
-const automationQueue = new Queue<TriggerJob>(AUTOMATION_QUEUE, { connection: connection.duplicate() });
-const slaQueue = new Queue(SLA_QUEUE, { connection: connection.duplicate() });
-const analyticsQueue = new Queue('analytics', { connection: connection.duplicate() });
+/**
+ * BullMQ does not close a connection it was handed, so every duplicate is tracked here
+ * and closed at shutdown after the workers and queues that use it.
+ */
+const connections: Redis[] = [];
+function duplicate(): Redis {
+  const client = connection.duplicate();
+  connections.push(client);
+  return client;
+}
+
+const emailQueue = new Queue('email', { connection: duplicate() });
+const automationQueue = new Queue<TriggerJob>(AUTOMATION_QUEUE, { connection: duplicate() });
+const slaQueue = new Queue(SLA_QUEUE, { connection: duplicate() });
+const analyticsQueue = new Queue('analytics', { connection: duplicate() });
 
 const aiDeps: AiDeps = {
   prisma,
@@ -71,20 +82,20 @@ const engineDeps: EngineDeps = {
 const emailWorker = new Worker<SendEmailJob>(
   'email',
   (job: Job<SendEmailJob>) => handleSendEmail(job, { emailProvider, logger }),
-  { connection: connection.duplicate(), concurrency: env.WORKER_CONCURRENCY },
+  { connection: duplicate(), concurrency: env.WORKER_CONCURRENCY },
 );
 
 const notificationWorker = new Worker<DeliverNotificationJob>(
   'notifications',
   (job: Job<DeliverNotificationJob>) =>
     handleDeliverNotification(job, { prisma, redis: connection, logger }),
-  { connection: connection.duplicate(), concurrency: env.WORKER_CONCURRENCY },
+  { connection: duplicate(), concurrency: env.WORKER_CONCURRENCY },
 );
 
 const automationWorker = new Worker<TriggerJob>(
   AUTOMATION_QUEUE,
   (job: Job<TriggerJob>) => handleAutomation(job, engineDeps),
-  { connection: connection.duplicate(), concurrency: env.WORKER_CONCURRENCY },
+  { connection: duplicate(), concurrency: env.WORKER_CONCURRENCY },
 );
 
 const channelWorker = new Worker<ChannelSendJob>(
@@ -96,21 +107,21 @@ const channelWorker = new Worker<ChannelSendJob>(
       sendEmail: (message) => emailProvider.send(message),
       encryptionKey: env.CHANNEL_ENCRYPTION_KEY,
     }),
-  { connection: connection.duplicate(), concurrency: env.WORKER_CONCURRENCY },
+  { connection: duplicate(), concurrency: env.WORKER_CONCURRENCY },
 );
 
 const webhookWorker = new Worker<WebhookDeliveryJob>(
   'webhook',
   (job: Job<WebhookDeliveryJob>) =>
     handleWebhookDelivery(job, { prisma, logger, maxAttempts: env.WEBHOOK_MAX_ATTEMPTS }),
-  { connection: connection.duplicate(), concurrency: env.WORKER_CONCURRENCY },
+  { connection: duplicate(), concurrency: env.WORKER_CONCURRENCY },
 );
 
 const aiWorker = new Worker<AiAnalyseJob>(
   'ai',
   (job: Job<AiAnalyseJob>) => handleAiAnalyse(job, { ...aiDeps, logger }),
   // The assistant is the slowest thing the worker does; keep it off the other lanes.
-  { connection: connection.duplicate(), concurrency: 2 },
+  { connection: duplicate(), concurrency: 2 },
 );
 
 const analyticsWorker = new Worker<ReportExportJob>(
@@ -120,14 +131,14 @@ const analyticsWorker = new Worker<ReportExportJob>(
       ? handleMetricsRollup(analyticsDeps)
       : handleReportExport(job, analyticsDeps),
   // Rollups scan the ticket table; one at a time keeps them off the other lanes.
-  { connection: connection.duplicate(), concurrency: 1 },
+  { connection: duplicate(), concurrency: 1 },
 );
 
 const slaWorker = new Worker(
   SLA_QUEUE,
   () => handleSlaScan(engineDeps, automationQueue),
   // One sweep at a time: the scan is idempotent but there is no reason to overlap it.
-  { connection: connection.duplicate(), concurrency: 1 },
+  { connection: duplicate(), concurrency: 1 },
 );
 
 // A repeatable job keyed by name: adding it again on every boot is a no-op.
@@ -150,7 +161,7 @@ void analyticsQueue.add(
   },
 );
 
-for (const worker of [
+const workers = [
   emailWorker,
   notificationWorker,
   automationWorker,
@@ -159,7 +170,9 @@ for (const worker of [
   webhookWorker,
   aiWorker,
   analyticsWorker,
-]) {
+];
+
+for (const worker of workers) {
   worker.on('failed', (job, error) => {
     logger.error(
       { queue: worker.name, jobId: job?.id, attempts: job?.attemptsMade },
@@ -173,12 +186,42 @@ for (const worker of [
 
 logger.info(`Worker started (email provider: ${emailProvider.name})`);
 
+/** How long in-flight jobs get to finish before the process exits anyway. */
+const SHUTDOWN_TIMEOUT_MS = 25_000;
+let shuttingDown = false;
+
 async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
   logger.info(`Received ${signal}, draining queues`);
-  await Promise.all([emailWorker.close(), notificationWorker.close(), automationWorker.close(), slaWorker.close()]);
-  await Promise.all([emailQueue.close(), automationQueue.close(), slaQueue.close()]);
-  await prisma.$disconnect();
-  await connection.quit();
+
+  // Orchestrators send SIGKILL after their own grace period; exit first, uncleanly if
+  // a job refuses to finish, rather than be killed mid-write without a log line.
+  const deadline = setTimeout(() => {
+    logger.error(`Shutdown did not finish within ${SHUTDOWN_TIMEOUT_MS}ms; exiting`);
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+  deadline.unref();
+
+  const settle = async (label: string, tasks: Promise<unknown>[]) => {
+    const results = await Promise.allSettled(tasks);
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        logger.warn({ err: result.reason }, `Error while closing ${label}`);
+      }
+    }
+  };
+
+  // Workers first, so running jobs complete and nothing new is picked up.
+  await settle('workers', workers.map((worker) => worker.close()));
+  await settle('queues', [emailQueue, automationQueue, slaQueue, analyticsQueue].map((queue) => queue.close()));
+  await settle('redis', [...connections, connection].map((client) => client.quit()));
+  await settle('database', [prisma.$disconnect()]);
+
+  clearTimeout(deadline);
+  logger.info('Worker stopped');
   process.exit(0);
 }
 

@@ -23,6 +23,13 @@ export type MessageType = (typeof MESSAGE_TYPES)[number];
 export const TICKET_LINK_TYPES = ['RELATED', 'DUPLICATE', 'BLOCKS'] as const;
 export type TicketLinkType = (typeof TICKET_LINK_TYPES)[number];
 
+/** Status buckets derived from the `isResolved` / `isClosed` flags. */
+export const TICKET_STATUS_CATEGORIES = ['open', 'resolved', 'closed'] as const;
+export type TicketStatusCategory = (typeof TICKET_STATUS_CATEGORIES)[number];
+
+/** A date (`2026-01-31`) or a full ISO 8601 timestamp, as a query-string parameter. */
+const queryDate = z.union([z.iso.date(), z.iso.datetime({ offset: true })]);
+
 export const createTicketSchema = z.object({
   subject: z.string().trim().min(1).max(255),
   description: z.string().trim().min(1).max(50_000),
@@ -115,8 +122,69 @@ export const listTicketsQuerySchema = paginationQuerySchema.extend({
   assignedToMe: queryBoolean.optional(),
   unassigned: queryBoolean.optional(),
   open: queryBoolean.optional(),
+  /**
+   * Creation window. A bare date (`2026-01-31`) covers that whole UTC day, so
+   * `createdFrom=2026-01-01&createdTo=2026-01-31` is all of January.
+   */
+  createdFrom: queryDate.optional(),
+  createdTo: queryDate.optional(),
+  /** Still-open tickets whose resolution due time (`dueAt`) has passed. */
+  overdue: queryBoolean.optional(),
+  /** Matches by the status flags, so it follows an organization's own statuses. */
+  statusCategory: z.enum(TICKET_STATUS_CATEGORIES).optional(),
 });
 export type ListTicketsQuery = z.infer<typeof listTicketsQuerySchema>;
+
+export const BULK_TICKET_ACTIONS = [
+  'assign',
+  'unassign',
+  'status',
+  'resolve',
+  'close',
+  'reopen',
+  'priority',
+  'addTags',
+  'removeTags',
+] as const;
+export type BulkTicketAction = (typeof BULK_TICKET_ACTIONS)[number];
+
+/** How many tickets one bulk request may touch. */
+export const BULK_TICKET_LIMIT = 100;
+
+const bulkTicketIds = z.array(z.string().min(1)).min(1).max(BULK_TICKET_LIMIT);
+const noPayload = z.object({}).optional();
+const tagIdsPayload = z.object({ tagIds: z.array(z.string().min(1)).min(1).max(50) });
+
+/**
+ * One action applied to many tickets. Each ticket runs through the same code path as
+ * its single-ticket endpoint, so a ticket the caller cannot see, a blueprint that
+ * refuses the move or a missing resolution note fails that ticket alone.
+ */
+export const bulkUpdateTicketsSchema = z.discriminatedUnion('action', [
+  z.object({ ticketIds: bulkTicketIds, action: z.literal('assign'), payload: assignTicketSchema }),
+  z.object({ ticketIds: bulkTicketIds, action: z.literal('unassign'), payload: noPayload }),
+  z.object({ ticketIds: bulkTicketIds, action: z.literal('status'), payload: changeStatusSchema }),
+  z.object({ ticketIds: bulkTicketIds, action: z.literal('resolve'), payload: resolveTicketSchema }),
+  z.object({ ticketIds: bulkTicketIds, action: z.literal('close'), payload: noPayload }),
+  z.object({ ticketIds: bulkTicketIds, action: z.literal('reopen'), payload: noPayload }),
+  z.object({ ticketIds: bulkTicketIds, action: z.literal('priority'), payload: changePrioritySchema }),
+  z.object({ ticketIds: bulkTicketIds, action: z.literal('addTags'), payload: tagIdsPayload }),
+  z.object({ ticketIds: bulkTicketIds, action: z.literal('removeTags'), payload: tagIdsPayload }),
+]);
+export type BulkUpdateTicketsInput = z.infer<typeof bulkUpdateTicketsSchema>;
+
+export interface BulkTicketResult {
+  id: string;
+  ok: boolean;
+  error?: { code: string; message: string };
+}
+
+export interface BulkUpdateTicketsResponse {
+  action: BulkTicketAction;
+  succeeded: number;
+  failed: number;
+  results: BulkTicketResult[];
+}
 
 export const ticketStatusSchema = z.object({
   name: z.string().trim().min(1).max(60),
@@ -160,3 +228,19 @@ export const tagSchema = z.object({
     .default('#64748b'),
 });
 export type TagInput = z.infer<typeof tagSchema>;
+
+/**
+ * `GET …/attachments/:id/download?mode=url` (or `Accept: application/json`). With
+ * object storage `url` is a pre-signed link anyone holding it can open until
+ * `expiresAt` (`direct: true`). With local storage there is nothing to sign: `url` is
+ * the API's own streaming endpoint, `expiresAt` is null and `direct` is false — fetch
+ * it with the same credentials as this request.
+ */
+export interface AttachmentDownloadLink {
+  url: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  expiresAt: string | null;
+  direct: boolean;
+}

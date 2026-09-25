@@ -2,17 +2,25 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PERMISSIONS } from '@digisoft/shared';
 import { ApiError } from '@/lib/api-client';
 import { ticketConfigService } from '@/services/tickets.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState, LoadingState } from '@/components/ui/states';
+import {
+  PriorityDialog,
+  StatusDialog,
+  type PriorityValues,
+  type StatusValues,
+} from '@/components/settings/ticket-option-dialog';
+import type { TicketPriorityConfig, TicketStatusConfig } from '@/types/api';
 
 interface Row {
   id: string;
@@ -32,6 +40,10 @@ function ConfigCard({
   onRetry,
   onCreate,
   onRemove,
+  onAdd,
+  onEdit,
+  onMove,
+  moving = false,
   placeholder,
   canManage,
   withColour = true,
@@ -42,13 +54,20 @@ function ConfigCard({
   loading: boolean;
   error: boolean;
   onRetry: () => void;
-  onCreate: (values: { name: string; color: string }) => void;
+  onCreate?: (values: { name: string; color: string }) => void;
   onRemove: (id: string) => void;
+  /** When set, "Add" opens a full dialog instead of the inline name field. */
+  onAdd?: () => void;
+  onEdit?: (id: string) => void;
+  /** Reorders a row one place up (-1) or down (+1). */
+  onMove?: (id: string, direction: -1 | 1) => void;
+  moving?: boolean;
   placeholder: string;
   canManage: boolean;
   withColour?: boolean;
 }) {
   const [name, setName] = useState('');
+  const confirm = useConfirm();
   const [color, setColor] = useState('#64748b');
   const inputId = `${title.toLowerCase().replace(/\s+/g, '-')}-name`;
 
@@ -65,7 +84,7 @@ function ConfigCard({
           <ErrorState message={`Unable to load ${title.toLowerCase()}.`} onRetry={onRetry} />
         ) : (
           <ul className="divide-y divide-border">
-            {rows.map((row) => (
+            {rows.map((row, index) => (
               <li key={row.id} className="flex items-center gap-2 py-2">
                 {row.color ? (
                   <span
@@ -83,13 +102,52 @@ function ConfigCard({
                 {row.meta ? (
                   <span className="text-xs text-muted-foreground">{row.meta}</span>
                 ) : null}
+                {canManage && (onMove || onEdit) ? (
+                  <>
+                    <span className="flex-1" aria-hidden />
+                    {onMove ? (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Move ${row.name} up`}
+                          disabled={index === 0 || moving}
+                          onClick={() => onMove(row.id, -1)}
+                        >
+                          <ArrowUp className="h-4 w-4" aria-hidden />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Move ${row.name} down`}
+                          disabled={index === rows.length - 1 || moving}
+                          onClick={() => onMove(row.id, 1)}
+                        >
+                          <ArrowDown className="h-4 w-4" aria-hidden />
+                        </Button>
+                      </>
+                    ) : null}
+                    {onEdit ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Edit ${row.name}`}
+                        onClick={() => onEdit(row.id)}
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden />
+                      </Button>
+                    ) : null}
+                  </>
+                ) : null}
                 {canManage && row.removable ? (
                   <Button
                     variant="ghost"
                     size="icon"
                     className="ml-auto"
                     aria-label={`Delete ${row.name}`}
-                    onClick={() => onRemove(row.id)}
+                    onClick={async () => {
+                      if (await confirm({ title: `Delete ${row.name}?`, confirmLabel: 'Delete' })) onRemove(row.id);
+                    }}
                   >
                     <Trash2 className="h-4 w-4" aria-hidden />
                   </Button>
@@ -99,7 +157,12 @@ function ConfigCard({
           </ul>
         )}
 
-        {canManage ? (
+        {canManage && onAdd ? (
+          <Button type="button" variant="outline" size="sm" onClick={onAdd}>
+            <Plus className="h-4 w-4" aria-hidden />
+            Add
+          </Button>
+        ) : canManage && onCreate ? (
           <form
             className="flex flex-wrap items-end gap-2"
             onSubmit={(event) => {
@@ -173,6 +236,97 @@ export default function TicketFieldsSettingsPage() {
 
   const invalidateTickets = () => queryClient.invalidateQueries({ queryKey: ['tickets'] });
 
+  const sortedStatuses = [...(statuses.data ?? [])].sort((a, b) => a.position - b.position);
+  const sortedPriorities = [...(priorities.data ?? [])].sort((a, b) => a.position - b.position);
+
+  // null = closed; 'new' = creating; otherwise the record being edited.
+  const [statusDialog, setStatusDialog] = useState<TicketStatusConfig | 'new' | null>(null);
+  const [priorityDialog, setPriorityDialog] = useState<TicketPriorityConfig | 'new' | null>(null);
+  const [moving, setMoving] = useState(false);
+
+  // Every write sends the whole record: the API fills omitted fields with their
+  // defaults, so a partial patch would silently clear flags such as isResolved.
+  const statusPayload = (status: TicketStatusConfig, position = status.position): StatusValues => ({
+    name: status.name,
+    color: status.color,
+    position,
+    isDefault: status.isDefault,
+    isResolved: status.isResolved,
+    isClosed: status.isClosed,
+    pausesSla: status.pausesSla,
+  });
+  const priorityPayload = (
+    priority: TicketPriorityConfig,
+    position = priority.position,
+  ): PriorityValues => ({
+    name: priority.name,
+    color: priority.color,
+    weight: priority.weight,
+    position,
+    isDefault: priority.isDefault,
+  });
+
+  const saveStatus = async (values: StatusValues) => {
+    try {
+      if (statusDialog && statusDialog !== 'new') {
+        await ticketConfigService.updateStatus(statusDialog.id, values);
+      } else {
+        await ticketConfigService.createStatus(values);
+      }
+    } catch (error) {
+      throw new Error(error instanceof ApiError ? error.message : 'Unable to save the status.');
+    }
+    await queryClient.invalidateQueries({ queryKey: ['ticket-statuses'] });
+    await invalidateTickets();
+    toast.success(statusDialog && statusDialog !== 'new' ? 'Status updated' : 'Status created');
+  };
+
+  const savePriority = async (values: PriorityValues) => {
+    try {
+      if (priorityDialog && priorityDialog !== 'new') {
+        await ticketConfigService.updatePriority(priorityDialog.id, values);
+      } else {
+        await ticketConfigService.createPriority(values);
+      }
+    } catch (error) {
+      throw new Error(error instanceof ApiError ? error.message : 'Unable to save the priority.');
+    }
+    await queryClient.invalidateQueries({ queryKey: ['ticket-priorities'] });
+    await invalidateTickets();
+    toast.success(priorityDialog && priorityDialog !== 'new' ? 'Priority updated' : 'Priority created');
+  };
+
+  /**
+   * Moves one row and renumbers the list 0..n-1, saving only the rows whose position
+   * actually changed — normally just the two that swapped places.
+   */
+  const reorder = async <T extends { id: string; position: number }>(
+    items: T[],
+    id: string,
+    direction: -1 | 1,
+    save: (item: T, position: number) => Promise<unknown>,
+    key: string,
+  ) => {
+    const from = items.findIndex((item) => item.id === id);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= items.length) return;
+    const order = [...items];
+    [order[from], order[to]] = [order[to]!, order[from]!];
+    setMoving(true);
+    try {
+      for (const [index, item] of order.entries()) {
+        if (item.position !== index) {
+          await save(item, index);
+        }
+      }
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : 'Unable to reorder.');
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: [key] });
+      setMoving(false);
+    }
+  };
+
   const remove = useMutation({
     mutationFn: async ({ kind, id }: { kind: string; id: string }) => {
       if (kind === 'status') return ticketConfigService.removeStatus(id);
@@ -207,7 +361,7 @@ export default function TicketFieldsSettingsPage() {
         error={statuses.isError}
         onRetry={() => statuses.refetch()}
         placeholder="e.g. Awaiting third party"
-        rows={(statuses.data ?? []).map((status) => ({
+        rows={sortedStatuses.map((status) => ({
           id: status.id,
           name: status.name,
           color: status.color,
@@ -220,11 +374,17 @@ export default function TicketFieldsSettingsPage() {
           ],
           removable: !status.isDefault,
         }))}
-        onCreate={(values) =>
-          void run(
-            () => ticketConfigService.createStatus({ ...values, position: 99, isDefault: false, isResolved: false, isClosed: false, pausesSla: false }),
-            ['ticket-statuses'],
-            'Status created',
+        onAdd={() => setStatusDialog('new')}
+        onEdit={(id) => setStatusDialog(sortedStatuses.find((status) => status.id === id) ?? null)}
+        moving={moving}
+        onMove={(id, direction) =>
+          void reorder(
+            sortedStatuses,
+            id,
+            direction,
+            (status, position) =>
+              ticketConfigService.updateStatus(status.id, statusPayload(status, position)),
+            'ticket-statuses',
           )
         }
         onRemove={(id) => remove.mutate({ kind: 'status', id })}
@@ -238,7 +398,7 @@ export default function TicketFieldsSettingsPage() {
         error={priorities.isError}
         onRetry={() => priorities.refetch()}
         placeholder="e.g. Critical"
-        rows={(priorities.data ?? []).map((priority) => ({
+        rows={sortedPriorities.map((priority) => ({
           id: priority.id,
           name: priority.name,
           color: priority.color,
@@ -249,17 +409,19 @@ export default function TicketFieldsSettingsPage() {
           meta: `weight ${priority.weight}`,
           removable: !priority.isDefault,
         }))}
-        onCreate={(values) =>
-          void run(
-            () =>
-              ticketConfigService.createPriority({
-                ...values,
-                weight: 50,
-                position: 99,
-                isDefault: false,
-              }),
-            ['ticket-priorities'],
-            'Priority created',
+        onAdd={() => setPriorityDialog('new')}
+        onEdit={(id) =>
+          setPriorityDialog(sortedPriorities.find((priority) => priority.id === id) ?? null)
+        }
+        moving={moving}
+        onMove={(id, direction) =>
+          void reorder(
+            sortedPriorities,
+            id,
+            direction,
+            (priority, position) =>
+              ticketConfigService.updatePriority(priority.id, priorityPayload(priority, position)),
+            'ticket-priorities',
           )
         }
         onRemove={(id) => remove.mutate({ kind: 'priority', id })}
@@ -308,6 +470,37 @@ export default function TicketFieldsSettingsPage() {
         onCreate={(values) => void run(() => ticketConfigService.createTag(values), ['tags'], 'Tag created')}
         onRemove={(id) => remove.mutate({ kind: 'tag', id })}
       />
+
+      {statusDialog !== null ? (
+        <StatusDialog
+          key={statusDialog === 'new' ? 'new' : statusDialog.id}
+          open
+          status={statusDialog === 'new' ? null : statusDialog}
+          nextPosition={
+            sortedStatuses.length > 0 ? Math.min(999, sortedStatuses[sortedStatuses.length - 1]!.position + 1) : 0
+          }
+          onOpenChange={(open) => {
+            if (!open) setStatusDialog(null);
+          }}
+          onSubmit={saveStatus}
+        />
+      ) : null}
+      {priorityDialog !== null ? (
+        <PriorityDialog
+          key={priorityDialog === 'new' ? 'new' : priorityDialog.id}
+          open
+          priority={priorityDialog === 'new' ? null : priorityDialog}
+          nextPosition={
+            sortedPriorities.length > 0
+              ? Math.min(999, sortedPriorities[sortedPriorities.length - 1]!.position + 1)
+              : 0
+          }
+          onOpenChange={(open) => {
+            if (!open) setPriorityDialog(null);
+          }}
+          onSubmit={savePriority}
+        />
+      ) : null}
     </div>
   );
 }

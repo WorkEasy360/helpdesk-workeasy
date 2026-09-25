@@ -10,7 +10,7 @@ import type { ChatMessageDto } from '@/types/api';
 import { Button } from '@/components/ui/button';
 import { Input, Textarea } from '@/components/ui/input';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? 'http://localhost:4000';
+import { SOCKET_URL } from '@/lib/env';
 
 interface Line {
   id: string;
@@ -30,8 +30,30 @@ const toLine = (message: ChatMessageDto): Line => ({
   createdAt: message.createdAt,
 });
 
+/** Per help center, per tab: survives a reload but not closing the tab. */
+const storageKey = (slug: string) => `digisoft-chat:${slug}`;
+
+function readStoredToken(slug: string): string | null {
+  try {
+    return window.sessionStorage.getItem(storageKey(slug));
+  } catch {
+    return null;
+  }
+}
+
+function storeToken(slug: string, token: string | null): void {
+  try {
+    if (token) window.sessionStorage.setItem(storageKey(slug), token);
+    else window.sessionStorage.removeItem(storageKey(slug));
+  } catch {
+    // Storage blocked (private mode, disabled cookies): the chat still works, it just
+    // will not survive a reload.
+  }
+}
+
 /**
- * The help center's chat widget. It holds the session token in memory only, listens on
+ * The help center's chat widget. It keeps the session token in sessionStorage for this
+ * tab only, so a reload resumes the conversation instead of losing it, listens on
  * its own socket namespace for the agent's replies, and falls back to nothing more than
  * a form if chat is switched off for this organization.
  */
@@ -49,6 +71,33 @@ export function ChatWidget({ slug }: { slug: string }) {
 
   const config = useQuery({ queryKey: ['chat-widget', slug], queryFn: api.config });
 
+  // Resume a conversation this tab already started, unless it has since ended or the
+  // token is no longer accepted.
+  useEffect(() => {
+    const stored = readStoredToken(slug);
+    if (!stored) {
+      return;
+    }
+    let cancelled = false;
+    void chatWidgetService(slug)
+      .transcript(stored)
+      .then((transcript) => {
+        if (cancelled) return;
+        if (transcript.session.status === 'ENDED') {
+          storeToken(slug, null);
+          return;
+        }
+        setToken(stored);
+        setLines(transcript.messages.map(toLine));
+      })
+      .catch(() => {
+        if (!cancelled) storeToken(slug, null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
   useEffect(() => {
     if (!token) {
       return;
@@ -62,11 +111,14 @@ export function ChatWidget({ slug }: { slug: string }) {
         current.some((line) => line.id === message.id) ? current : [...current, message],
       );
     });
-    socket.on('chat.ended', () => setEnded(true));
+    socket.on('chat.ended', () => {
+      setEnded(true);
+      storeToken(slug, null);
+    });
     return () => {
       socket.close();
     };
-  }, [token]);
+  }, [token, slug]);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth' });
@@ -87,6 +139,7 @@ export function ChatWidget({ slug }: { slug: string }) {
         pageUrl: typeof window === 'undefined' ? null : window.location.href,
       });
       setToken(result.token);
+      storeToken(slug, result.token);
       const transcript = await api.transcript(result.token);
       setLines(transcript.messages.map(toLine));
       setError(null);

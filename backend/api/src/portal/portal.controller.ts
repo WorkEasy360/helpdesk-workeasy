@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   articleFeedbackSchema,
@@ -76,14 +87,16 @@ export class PortalController {
     return this.content.search(user, query);
   }
 
+  /** `X-Metadata-Only: 1` reads the article without counting a view (page metadata). */
   @Get('kb/articles/:idOrSlug')
   article(
     @CurrentHelpCenter() helpCenter: PortalHelpCenter,
     @PortalUser() user: AuthenticatedUser | null,
     @Param('idOrSlug') idOrSlug: string,
+    @Headers('x-metadata-only') metadataOnly: string | undefined,
   ) {
     this.assertKb(helpCenter);
-    return this.content.article(user, idOrSlug);
+    return this.content.article(user, idOrSlug, metadataOnly !== '1');
   }
 
   @Throttle({ default: { limit: 20, ttl: 60_000 } })

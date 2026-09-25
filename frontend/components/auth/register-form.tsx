@@ -15,6 +15,7 @@ import { ApiError } from '@/lib/api-client';
 import { authService } from '@/services/auth.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { useHydrated } from '@/hooks/use-hydrated';
+import { useRegistrationEnabled } from '@/hooks/use-registration-enabled';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/ui/form';
@@ -53,17 +54,51 @@ export function RegisterForm() {
     }
   }, [name, slugTouched, setValue]);
 
+  // Known up front from the API's registration flag; a refused submit (an API that
+  // predates the flag) lands in the same state.
+  const registrationEnabled = useRegistrationEnabled();
+  const [refused, setRefused] = useState(false);
+  const disabled = refused || !registrationEnabled;
+
   const onSubmit = handleSubmit(async (values) => {
     try {
       const session = await authService.register(values);
       setSession(session.user, session.accessToken);
       router.replace('/dashboard');
     } catch (error) {
+      // Self-service sign-up can be switched off per deployment; the API then refuses
+      // the route outright (403, or 404 when it is not mounted at all).
+      if (
+        error instanceof ApiError &&
+        (error.status === 403 || error.status === 404 || error.code === 'REGISTRATION_DISABLED')
+      ) {
+        setRefused(true);
+        return;
+      }
       setError('root', {
         message: error instanceof ApiError ? error.message : 'Unable to create the organization.',
       });
     }
   });
+
+  if (disabled) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Registration is disabled</CardTitle>
+          <CardDescription>
+            New organizations cannot be created from this page. Contact your administrator to be
+            invited to an existing workspace.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild className="w-full">
+            <Link href="/login">Back to sign in</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>

@@ -10,14 +10,17 @@ import type { Server, Socket } from 'socket.io';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { AppConfig } from '../config/config.module';
 import { CHAT_BRIDGE_CHANNEL, chatRoom, type ChatEnvelope } from './chat.events';
+import { allowedOriginsOf, isWidgetOriginAllowed } from './widget-origin';
 
 /**
  * The visitor's socket. It is authenticated by the session token the widget was given
  * when the chat started — no account, no bearer token — and a socket only ever joins
- * the room of the one session that token belongs to.
+ * the room of the one session that token belongs to. Transport CORS is open (see
+ * RedisIoAdapter); the handshake Origin is checked against the channel's allowedOrigins.
  */
-@WebSocketGateway({ namespace: '/chat', cors: { origin: true, credentials: true } })
+@WebSocketGateway({ namespace: '/chat' })
 export class ChatGateway
   implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy
 {
@@ -30,6 +33,7 @@ export class ChatGateway
   constructor(
     private readonly prisma: PrismaService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly config: AppConfig,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -63,9 +67,19 @@ export class ChatGateway
 
     const session = await this.prisma.chatSession.findFirst({
       where: { tokenHash: createHash('sha256').update(token).digest('hex') },
-      select: { id: true, status: true, organizationId: true },
+      select: { id: true, status: true, organizationId: true, channel: { select: { config: true } } },
     });
     if (!session || session.status === 'ENDED') {
+      client.disconnect(true);
+      return;
+    }
+    if (
+      !isWidgetOriginAllowed(
+        client.handshake.headers.origin,
+        this.config.get('FRONTEND_URL'),
+        allowedOriginsOf(session.channel?.config),
+      )
+    ) {
       client.disconnect(true);
       return;
     }

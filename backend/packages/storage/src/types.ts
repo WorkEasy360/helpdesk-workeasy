@@ -8,6 +8,8 @@ export interface StoredObject {
 export interface DownloadTarget {
   /** A URL the browser can follow directly (object storage with presigning). */
   url?: string;
+  /** When `url` stops working; set alongside it. */
+  expiresAt?: Date;
   /** A stream the API proxies itself (local filesystem). */
   stream?: Readable;
 }

@@ -14,16 +14,21 @@ import {
 import { Public } from '../common/decorators/public.decorator';
 import { zodBody } from '../common/pipes/zod-validation.pipe';
 import { AppConfig } from '../config/config.module';
-import { REFRESH_COOKIE } from '../auth/auth.controller';
-import type { RequestMeta, SessionResult } from '../auth/auth.service';
+import { AppError } from '../common/errors/app-error';
+import { AuthService, type RequestMeta, type SessionResult } from '../auth/auth.service';
 import { CurrentHelpCenter, PortalAuth, PortalGuard, PortalOpen, PortalUser } from './portal.guard';
 import { PortalAuthService } from './portal-auth.service';
 import type { PortalHelpCenter } from './portal.types';
 
+/** The portal's own refresh cookie, scoped to one help center's auth routes. */
+export const PORTAL_REFRESH_COOKIE = 'ds_portal_refresh';
+
 /**
- * Customer sessions. The refresh cookie is the same one the agent app uses — same
- * name, same path, same rotation — so `/auth/refresh` and `/auth/logout` serve both
- * audiences and there is only one session implementation to keep correct.
+ * Customer sessions. Token issue and rotation are the agent implementation's, but the
+ * refresh cookie is the portal's own — its own name, scoped to this help center's auth
+ * path — so a customer session and an agent session in the same browser never
+ * overwrite each other, and a portal cookie is only ever renewed as a customer of this
+ * organization (`POST portal/:slug/auth/refresh`).
  */
 @Public()
 @UseGuards(PortalGuard)
@@ -31,6 +36,7 @@ import type { PortalHelpCenter } from './portal.types';
 export class PortalAuthController {
   constructor(
     private readonly portalAuth: PortalAuthService,
+    private readonly auth: AuthService,
     private readonly config: AppConfig,
   ) {}
 
@@ -44,7 +50,7 @@ export class PortalAuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
     const session = await this.portalAuth.register(helpCenter, dto, this.meta(req));
-    return this.respondWithSession(res, session);
+    return this.respondWithSession(res, helpCenter, session);
   }
 
   @PortalOpen()
@@ -58,7 +64,39 @@ export class PortalAuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
     const session = await this.portalAuth.login(helpCenter, dto, this.meta(req));
-    return this.respondWithSession(res, session);
+    return this.respondWithSession(res, helpCenter, session);
+  }
+
+  @PortalOpen()
+  @HttpCode(HttpStatus.OK)
+  @Post('refresh')
+  async refresh(
+    @CurrentHelpCenter() helpCenter: PortalHelpCenter,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponse> {
+    const raw = (req.cookies as Record<string, string> | undefined)?.[PORTAL_REFRESH_COOKIE];
+    if (!raw) {
+      throw AppError.unauthenticated('No active session', 'TOKEN_EXPIRED');
+    }
+    const session = await this.auth.refresh(raw, this.meta(req), {
+      organizationId: helpCenter.organizationId,
+      type: 'CUSTOMER',
+    });
+    return this.respondWithSession(res, helpCenter, session);
+  }
+
+  @PortalOpen()
+  @HttpCode(HttpStatus.OK)
+  @Post('logout')
+  async logout(
+    @CurrentHelpCenter() helpCenter: PortalHelpCenter,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ loggedOut: true }> {
+    await this.auth.logout((req.cookies as Record<string, string> | undefined)?.[PORTAL_REFRESH_COOKIE]);
+    res.clearCookie(PORTAL_REFRESH_COOKIE, this.cookieOptions(helpCenter, 0));
+    return { loggedOut: true };
   }
 
   @PortalOpen()
@@ -82,21 +120,29 @@ export class PortalAuthController {
     return this.portalAuth.profile(helpCenter.organizationId, user!.id);
   }
 
-  private respondWithSession(res: Response, session: SessionResult): LoginResponse {
+  private respondWithSession(
+    res: Response,
+    helpCenter: PortalHelpCenter,
+    session: SessionResult,
+  ): LoginResponse {
     const maxAge = session.refreshTokenExpiresAt.getTime() - Date.now();
-    res.cookie(REFRESH_COOKIE, session.refreshToken, {
-      httpOnly: true,
-      secure: this.config.get('COOKIE_SECURE'),
-      sameSite: 'lax' as const,
-      domain: this.config.get('COOKIE_DOMAIN'),
-      path: `/${this.config.get('API_PREFIX')}/auth`,
-      maxAge,
-    });
+    res.cookie(PORTAL_REFRESH_COOKIE, session.refreshToken, this.cookieOptions(helpCenter, maxAge));
     return {
       status: 'authenticated',
       accessToken: session.accessToken,
       expiresIn: session.expiresIn,
       user: session.user,
+    };
+  }
+
+  private cookieOptions(helpCenter: PortalHelpCenter, maxAge: number) {
+    return {
+      httpOnly: true,
+      secure: this.config.get('COOKIE_SECURE'),
+      sameSite: 'lax' as const,
+      domain: this.config.get('COOKIE_DOMAIN'),
+      path: `/${this.config.get('API_PREFIX')}/portal/${helpCenter.slug}/auth`,
+      maxAge,
     };
   }
 

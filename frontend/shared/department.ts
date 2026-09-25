@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './pagination';
-import { optionalField } from './field';
+import { optionalField, patchSchema } from './field';
 
 export const createDepartmentSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -11,7 +11,7 @@ export const createDepartmentSchema = z.object({
 });
 export type CreateDepartmentInput = z.infer<typeof createDepartmentSchema>;
 export type DepartmentFormValues = z.input<typeof createDepartmentSchema>;
-export const updateDepartmentSchema = createDepartmentSchema.partial();
+export const updateDepartmentSchema = patchSchema(createDepartmentSchema);
 export type UpdateDepartmentInput = z.infer<typeof updateDepartmentSchema>;
 
 export const createTeamSchema = z.object({
@@ -22,7 +22,7 @@ export const createTeamSchema = z.object({
 });
 export type CreateTeamInput = z.infer<typeof createTeamSchema>;
 export type TeamFormValues = z.input<typeof createTeamSchema>;
-export const updateTeamSchema = createTeamSchema.partial();
+export const updateTeamSchema = patchSchema(createTeamSchema);
 export type UpdateTeamInput = z.infer<typeof updateTeamSchema>;
 
 export const listDepartmentsQuerySchema = paginationQuerySchema;

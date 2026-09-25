@@ -10,7 +10,10 @@ describe('AttachmentsService.sanitiseFileName', () => {
   it('strips directory components from a traversal attempt', () => {
     expect(sanitise('../../../../etc/passwd')).toBe('passwd');
     expect(sanitise('/absolute/path/report.pdf')).toBe('report.pdf');
-    expect(sanitise('..\\..\\windows\\system32\\cmd.exe')).toBe('.._.._windows_system32_cmd.exe');
+    // Backslashes are separators on every platform, so the result is OS-independent.
+    expect(sanitise('..\\..\\windows\\system32\\cmd.exe')).toBe('cmd.exe');
+    expect(sanitise('C:\\Users\\me\\report.pdf')).toBe('report.pdf');
+    expect(sanitise('mixed/..\\path/notes.txt')).toBe('notes.txt');
   });
 
   it('removes characters that break paths or terminals', () => {
@@ -22,6 +25,8 @@ describe('AttachmentsService.sanitiseFileName', () => {
     expect(sanitise('')).toBe('file');
     expect(sanitise('   ')).toBe('file');
     expect(sanitise('/')).toBe('file');
+    expect(sanitise('\\')).toBe('file');
+    expect(sanitise('uploads/..')).toBe('file');
   });
 
   it('caps the length', () => {

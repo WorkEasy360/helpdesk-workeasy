@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   PERMISSIONS,
@@ -13,9 +13,12 @@ import {
   type TeamFormValues,
 } from '@digisoft/shared';
 import { ApiError } from '@/lib/api-client';
-import { departmentsService, teamsService, usersService } from '@/services/settings.service';
+import { departmentsService, teamsService } from '@/services/settings.service';
 import { useAuthStore } from '@/stores/auth.store';
+import type { Team } from '@/types/api';
+import { AgentPicker, type PickedAgent } from '@/components/settings/agent-picker';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { Field } from '@/components/ui/form';
 import { Card } from '@/components/ui/card';
@@ -32,17 +35,16 @@ import { EmptyState, ErrorState, TableSkeleton } from '@/components/ui/states';
 export default function TeamsSettingsPage() {
   const can = useAuthStore((state) => state.can);
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const confirm = useConfirm();
+  const [open, setOpenState] = useState(false);
+  // The team being edited; null while creating a new one.
+  const [editing, setEditing] = useState<Team | null>(null);
+  const [members, setMembers] = useState<PickedAgent[]>([]);
 
   const teams = useQuery({ queryKey: ['teams'], queryFn: teamsService.list });
   const departments = useQuery({
     queryKey: ['departments'],
     queryFn: departmentsService.list,
-    enabled: open,
-  });
-  const agents = useQuery({
-    queryKey: ['users', 'assignable'],
-    queryFn: () => usersService.list({ page: 1, pageSize: 100, isActive: true }),
     enabled: open,
   });
 
@@ -57,17 +59,55 @@ export default function TeamsSettingsPage() {
     defaultValues: { memberIds: [] },
   });
 
-  const create = useMutation({
-    mutationFn: (values: CreateTeamInput) => teamsService.create(values),
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    if (!next) setEditing(null);
+  };
+
+  const startCreate = () => {
+    setEditing(null);
+    setMembers([]);
+    reset({ name: '', description: '', departmentId: '', memberIds: [] });
+    setOpenState(true);
+  };
+
+  const startEdit = (team: Team) => {
+    setEditing(team);
+    setMembers(
+      team.members.map((member) => ({
+        id: member.user.id,
+        name: `${member.user.firstName} ${member.user.lastName}`,
+      })),
+    );
+    reset({
+      name: team.name,
+      description: team.description ?? '',
+      departmentId: team.departmentId ?? '',
+      memberIds: [],
+    });
+    setOpenState(true);
+  };
+
+  const save = useMutation({
+    mutationFn: (values: CreateTeamInput) => {
+      const input = { ...values, memberIds: members.map((member) => member.id) };
+      return editing ? teamsService.update(editing.id, input) : teamsService.create(input);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['teams'] });
-      toast.success('Team created');
+      toast.success(editing ? 'Team updated' : 'Team created');
       reset({ name: '', description: '', departmentId: '', memberIds: [] });
+      setMembers([]);
       setOpen(false);
     },
     onError: (error) =>
       setError('root', {
-        message: error instanceof ApiError ? error.message : 'Unable to create the team.',
+        message:
+          error instanceof ApiError
+            ? error.message
+            : editing
+              ? 'Unable to update the team.'
+              : 'Unable to create the team.',
       }),
   });
 
@@ -85,7 +125,7 @@ export default function TeamsSettingsPage() {
     <>
       <div className="flex justify-end">
         {can(PERMISSIONS.TEAM_MANAGE) ? (
-          <Button onClick={() => setOpen(true)}>
+          <Button onClick={startCreate}>
             <Plus className="h-4 w-4" aria-hidden />
             New team
           </Button>
@@ -133,12 +173,25 @@ export default function TeamsSettingsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={`Edit ${team.name}`}
+                        onClick={() => startEdit(team)}
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden />
+                      </Button>
+                    ) : null}
+                    {can(PERMISSIONS.TEAM_MANAGE) ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         aria-label={`Delete ${team.name}`}
-                        onClick={() => {
-                          if (window.confirm(`Delete ${team.name}?`)) {
-                            remove.mutate(team.id);
-                          }
-                        }}
+                        onClick={() =>
+                          void confirm({
+                            title: `Delete ${team.name}?`,
+                            description: 'Members stay in the workspace; only the grouping is removed.',
+                            confirmLabel: 'Delete',
+                            onConfirm: () => remove.mutateAsync(team.id).catch(() => undefined),
+                          })
+                        }
                       >
                         <Trash2 className="h-4 w-4" aria-hidden />
                       </Button>
@@ -154,10 +207,10 @@ export default function TeamsSettingsPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New team</DialogTitle>
+            <DialogTitle>{editing ? `Edit ${editing.name}` : 'New team'}</DialogTitle>
           </DialogHeader>
           <form
-            onSubmit={handleSubmit((values) => create.mutateAsync(values))}
+            onSubmit={handleSubmit((values) => save.mutateAsync(values))}
             className="space-y-4"
             noValidate
           >
@@ -182,23 +235,10 @@ export default function TeamsSettingsPage() {
 
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium">Members</legend>
-              {agents.isPending ? (
-                <p className="text-sm text-muted-foreground">Loading agents…</p>
-              ) : (
-                <div className="max-h-40 space-y-1 overflow-y-auto">
-                  {agents.data?.items.map((agent) => (
-                    <label key={agent.id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-input"
-                        value={agent.id}
-                        {...register('memberIds')}
-                      />
-                      {agent.firstName} {agent.lastName}
-                    </label>
-                  ))}
-                </div>
-              )}
+              <label htmlFor="team-members" className="sr-only">
+                Search agents to add
+              </label>
+              <AgentPicker id="team-members" value={members} onChange={setMembers} />
             </fieldset>
 
             {errors.root ? (
@@ -211,7 +251,7 @@ export default function TeamsSettingsPage() {
                 Cancel
               </Button>
               <Button type="submit" loading={isSubmitting}>
-                Create team
+                {editing ? 'Save changes' : 'Create team'}
               </Button>
             </DialogFooter>
           </form>

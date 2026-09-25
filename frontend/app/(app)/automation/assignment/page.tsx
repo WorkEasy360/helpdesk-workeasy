@@ -11,6 +11,7 @@ import { departmentsService, teamsService, usersService } from '@/services/setti
 import { useAuthStore } from '@/stores/auth.store';
 import type { AssignmentRule, ConditionTreeDto } from '@/types/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Input, Select } from '@/components/ui/input';
 import { Field } from '@/components/ui/form';
 import { Badge } from '@/components/ui/badge';
@@ -123,6 +124,7 @@ function RuleDialog({ open, onOpenChange, rule }: { open: boolean; onOpenChange:
 
 export default function AssignmentRulesPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const can = useAuthStore((state) => state.can);
   const manage = can(PERMISSIONS.OPERATIONS_MANAGE);
   const [dialog, setDialog] = useState<{ open: boolean; rule: AssignmentRule | null }>({ open: false, rule: null });
@@ -187,7 +189,7 @@ export default function AssignmentRulesPage() {
                       <Button variant="ghost" size="icon" aria-label="Move down" disabled={index === rules.data.length - 1} onClick={() => move(index, 1)}><ArrowDown className="h-4 w-4" aria-hidden /></Button>
                       <Button variant="outline" size="sm" onClick={() => toggle.mutate(rule)}>{rule.isActive ? 'Disable' : 'Enable'}</Button>
                       <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setDialog({ open: true, rule })}><Pencil className="h-4 w-4" aria-hidden /></Button>
-                      <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => window.confirm(`Delete "${rule.name}"?`) && remove.mutate(rule.id)}><Trash2 className="h-4 w-4" aria-hidden /></Button>
+                      <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => void confirm({ title: `Delete "${rule.name}"?`, confirmLabel: 'Delete', onConfirm: () => remove.mutateAsync(rule.id) })}><Trash2 className="h-4 w-4" aria-hidden /></Button>
                     </div>
                   ) : null}
                 </li>

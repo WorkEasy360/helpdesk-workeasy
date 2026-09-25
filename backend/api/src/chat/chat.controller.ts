@@ -24,6 +24,7 @@ import {
   type ListChatSessionsQuery,
   type RateChatInput,
   type StartChatInput,
+  patchSchema,
 } from '@digisoft/shared';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -43,7 +44,11 @@ export class PortalChatController {
 
   /** Whether chat is available here, and what the widget should greet people with. */
   @Get('config')
-  async config(@CurrentHelpCenter() helpCenter: PortalHelpCenter) {
+  async config(
+    @CurrentHelpCenter() helpCenter: PortalHelpCenter,
+    @Headers('origin') origin: string | undefined,
+  ) {
+    await this.chat.assertWidgetOrigin(origin);
     const channel = await this.chat.channel();
     const config = (channel?.config ?? {}) as Record<string, unknown>;
     return {
@@ -61,12 +66,13 @@ export class PortalChatController {
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('start')
-  start(
+  async start(
     @CurrentHelpCenter() helpCenter: PortalHelpCenter,
     @PortalUser() user: AuthenticatedUser | null,
     @Body(zodBody(startChatSchema)) dto: StartChatInput,
     @Req() request: Request,
   ) {
+    await this.chat.assertWidgetOrigin(request.headers.origin);
     return this.chat.start(helpCenter.organizationId, dto, {
       ip: request.ip ?? null,
       userAgent: request.headers['user-agent'] ?? null,
@@ -75,7 +81,11 @@ export class PortalChatController {
   }
 
   @Get('session')
-  async session(@Headers('x-chat-token') token: string | undefined) {
+  async session(
+    @Headers('x-chat-token') token: string | undefined,
+    @Headers('origin') origin: string | undefined,
+  ) {
+    await this.chat.assertWidgetOrigin(origin);
     const session = await this.requireSession(token);
     return this.chat.transcript(session.id);
   }
@@ -86,8 +96,10 @@ export class PortalChatController {
   async message(
     @CurrentHelpCenter() helpCenter: PortalHelpCenter,
     @Headers('x-chat-token') token: string | undefined,
+    @Headers('origin') origin: string | undefined,
     @Body(zodBody(chatMessageSchema)) dto: ChatMessageInput,
   ) {
+    await this.chat.assertWidgetOrigin(origin);
     const session = await this.requireSession(token);
     return this.chat.visitorMessage(helpCenter.organizationId, session.id, dto);
   }
@@ -97,8 +109,10 @@ export class PortalChatController {
   async end(
     @CurrentHelpCenter() helpCenter: PortalHelpCenter,
     @Headers('x-chat-token') token: string | undefined,
-    @Body(zodBody(rateChatSchema.partial())) dto: Partial<RateChatInput>,
+    @Headers('origin') origin: string | undefined,
+    @Body(zodBody(patchSchema(rateChatSchema))) dto: Partial<RateChatInput>,
   ) {
+    await this.chat.assertWidgetOrigin(origin);
     const session = await this.requireSession(token);
     return this.chat.end(helpCenter.organizationId, session.id, dto.rating);
   }

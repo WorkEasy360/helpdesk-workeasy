@@ -1,11 +1,24 @@
 # Environment variables
 
-`.env` at the repository root is read by every app. `.env.example` lists the full set
-with safe defaults. The API validates its environment at boot with a Zod schema
+For development, `backend/.env` is read by the API and worker (`backend/.env.example`
+lists the full set with safe defaults) and `frontend/.env.local` by the web app. For
+production, `deploy/.env` (template: `deploy/.env.example`) is the single source for
+the Docker Compose stack; `backend/.env.production.example` lists the same app
+variables for other runtimes. See [`deploy/README.md`](../../deploy/README.md). The API validates its environment at boot with a Zod schema
 (`backend/api/src/config/env.schema.ts`) and **refuses to start** on anything missing or
 malformed, so a misconfiguration fails immediately instead of at the first request.
 
 Never commit a real `.env`. It is in `.gitignore`.
+
+## Production-only (deploy/.env, read by docker-compose.prod.yml)
+
+| Variable | Notes |
+|---|---|
+| `DOMAIN` | The public hostname. `FRONTEND_URL`, `BACKEND_URL`, `PUBLIC_API_URL` and the web build args are derived from it |
+| `LETSENCRYPT_EMAIL` | Certificate expiry notices |
+| `REDIS_PASSWORD` | `openssl rand -hex 32`; used for `requirepass` and `REDIS_URL` |
+| `IMAGE_TAG` | Image tag; `deploy.sh` uses the git short sha |
+| `APP_VERSION` | Passed to the web build as `NEXT_PUBLIC_APP_VERSION` |
 
 ## Core
 
@@ -22,8 +35,8 @@ Never commit a real `.env`. It is in `.gitignore`.
 
 | Variable | Required | Notes |
 |---|---|---|
-| `DATABASE_URL` | **yes** | PostgreSQL connection string. Add `?sslmode=require` for most managed providers |
-| `REDIS_URL` | no (`redis://localhost:6379`) | Cache, queues and the Socket.IO adapter |
+| `DATABASE_URL` | **yes** | PostgreSQL connection string. Production (shared Aurora): `postgresql://helpdesk_app:PW@<writer-endpoint>:5432/<existing_db>?schema=helpdesk&sslmode=require&connection_limit=10` — own schema, least-privilege role, TLS, bounded pool per process. URL-encode special characters in the password |
+| `REDIS_URL` | no (`redis://localhost:6379`) | Cache, queues and the Socket.IO adapter. Production: `redis://:<REDIS_PASSWORD>@redis:6379`, built by `deploy/docker-compose.prod.yml` from `REDIS_PASSWORD` |
 
 ## Authentication
 
@@ -35,6 +48,20 @@ Never commit a real `.env`. It is in `.gitignore`.
 | `JWT_REFRESH_EXPIRES_IN_DAYS` | no | `30` | Refresh token lifetime |
 | `COOKIE_SECURE` | no | `false` | **Set to `true` in production** |
 | `COOKIE_DOMAIN` | no | — | e.g. `.digisoft360.com` when the API and frontend share a parent domain |
+
+## Proxy, request limits and registration (added in this hardening pass)
+
+| Variable | Default | Production | Notes |
+|---|---|---|---|
+| `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | `1` | Express `trust proxy`: which hops may set `X-Forwarded-For`/`-Proto`, deciding `req.ip` (rate limits, audit) and `req.protocol` (Twilio signature URLs). A hop count, `true`/`false`, or a list of addresses/CIDRs. nginx is exactly one hop |
+| `BODY_LIMIT` | `1mb` | `1mb` | JSON / form body ceiling. Attachments (multipart) are capped by `ATTACHMENT_MAX_BYTES` instead |
+| `WEBHOOK_BODY_LIMIT` | `ATTACHMENT_MAX_BYTES` × 1.4 + 1 MB | unset | Inbound channel webhooks, which may carry base64 attachments. nginx's `client_max_body_size` (40m) must stay above it |
+| `ALLOW_PUBLIC_REGISTRATION` | `true` | `false` after the first organization | When `false`, `POST /auth/register` (creating a new organization) is refused |
+
+With `NODE_ENV=production` the API also refuses to boot on unsafe settings:
+`COOKIE_SECURE=false`, localhost `FRONTEND_URL`/`BACKEND_URL`/`PUBLIC_API_URL`,
+`EMAIL_PROVIDER=console`, a missing `CHANNEL_ENCRYPTION_KEY`, or placeholder or
+identical JWT secrets.
 
 ## Rate limiting
 
@@ -55,7 +82,7 @@ to Redis is required before running more than one instance behind a load balance
 | `EMAIL_PROVIDER` | `console` (logs the message), `smtp`, or `ses` |
 | `EMAIL_FROM` | From address on every transactional email |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE` | Required when `EMAIL_PROVIDER=smtp` |
-| `AWS_REGION` | Required when `EMAIL_PROVIDER=ses`; credentials come from the standard AWS provider chain |
+| `AWS_REGION` | Required when `EMAIL_PROVIDER=ses`; credentials come from the standard AWS provider chain — on EC2, the instance role (containers need IMDSv2 hop limit 2). `EMAIL_FROM` must be on an SES-verified domain |
 
 ## Attachment and report storage
 
@@ -69,10 +96,10 @@ processes and must be configured identically in both.
 | `STORAGE_LOCAL_PATH` | `./storage` | Only used by the `local` provider. **Set it to an absolute path.** The API and the worker are separate processes with different working directories — a relative path resolves to two different directories, so the worker's report exports would 404 when the API tries to serve them. Put it on a shared, persistent volume (`docker-compose.yml` mounts one), or use `s3` for anything multi-instance |
 | `ATTACHMENT_MAX_BYTES` | `26214400` (25 MB) | Enforced by the service and again by the multipart parser |
 | `S3_BUCKET`, `S3_REGION` | — | Required when `STORAGE_PROVIDER=s3` |
-| `S3_ENDPOINT` | — | Set for MinIO or R2; omit for AWS |
-| `S3_ACCESS_KEY`, `S3_SECRET_KEY` | — | Omit to use the standard AWS provider chain |
-| `S3_FORCE_PATH_STYLE` | `true` | Needed by MinIO; AWS works either way |
-| `S3_SIGNED_URL_TTL_SECONDS` | `300` | How long a download link stays valid |
+| `S3_ENDPOINT` | — | Set for MinIO or R2; **omit entirely** for AWS — an empty `S3_ENDPOINT=` line is passed to the SDK as an empty endpoint |
+| `S3_ACCESS_KEY`, `S3_SECRET_KEY` | — | Omit to use the standard AWS provider chain (the EC2 instance role in production) |
+| `S3_FORCE_PATH_STYLE` | `false` | `true` for MinIO; `false` for AWS. Set it explicitly — keep API and worker identical |
+| `S3_SIGNED_URL_TTL_SECONDS` | `300` (API) / `900` (worker) | How long a download link stays valid. The defaults differ between processes, so set it explicitly |
 
 The `local` provider keeps files on one node's disk (or a volume every node mounts), so
 it suits development and single-node self-hosting. Anything running more than one API
@@ -91,12 +118,16 @@ instance needs `s3`.
 
 | Variable | Notes |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | e.g. `https://api.example.com/api/v1`. Public — never put a secret in a `NEXT_PUBLIC_` variable |
-| `NEXT_PUBLIC_SOCKET_URL` | Socket.IO origin |
+| `NEXT_PUBLIC_API_URL` | **Build time.** e.g. `https://desk.example.com/api/v1`. Inlined into the bundle and the CSP `connect-src`; a required build arg of `frontend/Dockerfile`. Public — never put a secret in a `NEXT_PUBLIC_` variable |
+| `NEXT_PUBLIC_SOCKET_URL` | **Build time**, optional. Socket.IO origin (e.g. `https://desk.example.com`); defaults to the API origin. The client connects to namespaces `/rt` and `/chat` on the default `/socket.io/` path |
+| `NEXT_PUBLIC_APP_VERSION` | **Build time**, optional. Shown in the app |
+| `API_INTERNAL_URL` | **Runtime.** Base URL for server-side fetches from the Next server, e.g. `http://api:4000/api/v1` inside Compose |
 
 ## Seed
 
-`SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` — used only by `pnpm db:seed`.
+`SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` — used only by `pnpm db:seed` (development; creates a `demo`
+organization). Not available in the production image and never run against the shared
+database — register the first organization through the UI instead.
 
 ## Phase 4 — self-service
 

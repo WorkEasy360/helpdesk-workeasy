@@ -1,6 +1,13 @@
 export type EmailTemplate =
   | { kind: 'verify-email'; firstName: string; url: string }
-  | { kind: 'reset-password'; firstName: string; url: string; expiresInMinutes: number }
+  | {
+      kind: 'reset-password';
+      firstName: string;
+      url: string;
+      expiresInMinutes: number;
+      /** Named when the address has accounts in several organizations. */
+      organizationName?: string;
+    }
   | { kind: 'invite'; firstName: string; organizationName: string; url: string }
   | { kind: 'password-changed'; firstName: string }
   | {
@@ -65,12 +72,20 @@ export function renderEmail(template: EmailTemplate): RenderedEmail {
       };
     case 'reset-password':
       return {
-        subject: 'Reset your password',
+        subject: template.organizationName
+          ? `Reset your ${template.organizationName} password`
+          : 'Reset your password',
         html: layout(
           `Hi ${template.firstName},`,
-          `<p>We received a request to reset your password. This link expires in ${template.expiresInMinutes} minutes.</p>${button(template.url, 'Reset password')}<p>If you did not request this, you can ignore this email.</p>`,
+          `<p>We received a request to reset your password${
+            template.organizationName
+              ? ` for <strong>${escapeHtml(template.organizationName)}</strong>`
+              : ''
+          }. This link expires in ${template.expiresInMinutes} minutes.</p>${button(template.url, 'Reset password')}<p>If you did not request this, you can ignore this email.</p>`,
         ),
-        text: `Hi ${template.firstName},\n\nReset your password (expires in ${template.expiresInMinutes} minutes): ${template.url}`,
+        text: `Hi ${template.firstName},\n\nReset your ${
+          template.organizationName ? `${template.organizationName} ` : ''
+        }password (expires in ${template.expiresInMinutes} minutes): ${template.url}`,
       };
     case 'invite':
       return {

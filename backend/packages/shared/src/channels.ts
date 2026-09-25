@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './pagination';
-import { optionalField, queryBoolean } from './field';
+import { optionalField, queryBoolean, patchSchema } from './field';
 
 export const CHANNEL_TYPES = [
   'EMAIL',
@@ -103,7 +103,7 @@ export const channelSchema = z.object({
 export type ChannelInput = z.infer<typeof channelSchema>;
 export type ChannelFormValues = z.input<typeof channelSchema>;
 
-export const updateChannelSchema = channelSchema.partial().omit({ type: true });
+export const updateChannelSchema = patchSchema(channelSchema).omit({ type: true });
 export type UpdateChannelInput = z.infer<typeof updateChannelSchema>;
 
 export const listChannelsQuerySchema = z.object({

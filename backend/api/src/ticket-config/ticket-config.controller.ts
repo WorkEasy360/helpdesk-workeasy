@@ -10,6 +10,7 @@ import {
   type TicketCategoryInput,
   type TicketPriorityInput,
   type TicketStatusInput,
+  patchSchema,
 } from '@digisoft/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -41,7 +42,7 @@ export class TicketConfigController {
   updateStatus(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body(zodBody(ticketStatusSchema.partial())) dto: Partial<TicketStatusInput>,
+    @Body(zodBody(patchSchema(ticketStatusSchema))) dto: Partial<TicketStatusInput>,
   ) {
     return this.config.updateStatus(id, user, dto);
   }
@@ -73,7 +74,7 @@ export class TicketConfigController {
   updatePriority(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body(zodBody(ticketPrioritySchema.partial())) dto: Partial<TicketPriorityInput>,
+    @Body(zodBody(patchSchema(ticketPrioritySchema))) dto: Partial<TicketPriorityInput>,
   ) {
     return this.config.updatePriority(id, user, dto);
   }
@@ -105,7 +106,7 @@ export class TicketConfigController {
   updateCategory(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body(zodBody(ticketCategorySchema.partial())) dto: Partial<TicketCategoryInput>,
+    @Body(zodBody(patchSchema(ticketCategorySchema))) dto: Partial<TicketCategoryInput>,
   ) {
     return this.config.updateCategory(id, user, dto);
   }

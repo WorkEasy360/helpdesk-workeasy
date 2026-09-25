@@ -7,7 +7,8 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth.store';
 import { PageHeader } from '@/components/layout/page-header';
 
-const TABS = [
+const TABS: { href: string; label: string; permission?: string }[] = [
+  { href: '/settings/profile', label: 'Profile' },
   { href: '/settings/organization', label: 'Organization', permission: PERMISSIONS.ORGANIZATION_READ },
   { href: '/settings/users', label: 'Agents', permission: PERMISSIONS.USER_READ },
   { href: '/settings/roles', label: 'Roles', permission: PERMISSIONS.ROLE_READ },
@@ -30,7 +31,7 @@ const TABS = [
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const can = useAuthStore((state) => state.can);
-  const tabs = TABS.filter((tab) => can(tab.permission));
+  const tabs = TABS.filter((tab) => !tab.permission || can(tab.permission));
 
   return (
     <>

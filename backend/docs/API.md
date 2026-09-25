@@ -14,16 +14,19 @@ List endpoints share `?page&pageSize&sort&order&q&<filters>` and are cursor-capa
 
 ## Auth — P1 (implemented)
 ```
-POST   /auth/register                 # creates org + super admin (self-serve signup)
+GET    /auth/register                 # { enabled } — whether self-serve signup is on
+POST   /auth/register                 # creates org + super admin; 403 REGISTRATION_DISABLED
+                                      # when ALLOW_PUBLIC_REGISTRATION=false
 POST   /auth/login
 POST   /auth/refresh                  # refresh cookie -> new access token (rotates)
 POST   /auth/logout
 GET    /auth/me
+PATCH  /auth/me                       # { firstName?, lastName?, phone?, avatarUrl? } — own profile only
 POST   /auth/forgot-password
 POST   /auth/reset-password
 POST   /auth/verify-email
 POST   /auth/resend-verification
-PATCH  /auth/password                 # change own password
+POST   /auth/change-password          # change own password; revokes every session
 ```
 
 ## Organization — P1 (implemented)
@@ -79,6 +82,7 @@ GET    /tickets/:id
 POST   /tickets
 PATCH  /tickets/:id                   # only the fields sent are changed
 DELETE /tickets/:id                   # soft delete
+POST   /tickets/bulk                  # { ticketIds (1–100), action, payload } — see below
 
 POST   /tickets/:id/assign            # { assignedAgentId?, departmentId? }
 POST   /tickets/:id/status            # { statusId, resolutionNote? }
@@ -99,7 +103,8 @@ POST   /tickets/:id/comments          # internal comment (ticket.comment)
 
 POST   /tickets/:id/attachments       # multipart upload, validated and stored
 GET    /tickets/:id/attachments
-GET    /attachments/:id/download      # streamed (local) or 302 to a signed URL (S3)
+GET    /attachments/:id/download      # streamed (local) or 302 to a signed URL (S3);
+                                      # ?mode=url or Accept: application/json -> link as JSON
 DELETE /attachments/:id
 
 GET|POST         /ticket-statuses    · PATCH|DELETE /ticket-statuses/:id
@@ -111,9 +116,55 @@ GET|POST         /tags               · DELETE       /tags/:id
 **List filters:** `statusId`, `priorityId`, `departmentId`, `assignedAgentId`, `categoryId`,
 `contactId`, `accountId`, `tagId`, `source`, plus the saved-view shortcuts `assignedToMe`,
 `unassigned` and `open` (neither resolved nor closed). `q` matches the subject, the
-description or a ticket number.
+description or a ticket number. Also:
 
-**Not yet built:** `POST /tickets/bulk`.
+- `createdFrom` / `createdTo` — a date (`2026-01-31`) or ISO 8601 timestamp. Both ends are
+  inclusive; a bare `createdTo` date covers that whole UTC day.
+- `overdue=true` — open (neither resolved nor closed) tickets whose `dueAt` (the
+  resolution due time) has passed.
+- `statusCategory=open|resolved|closed` — by status flags: `open` = neither flag,
+  `resolved` = `isResolved` and not `isClosed`, `closed` = `isClosed`.
+
+All filters combine (AND).
+
+**Bulk actions** — `POST /tickets/bulk` (`ticket.update`; `assign`/`unassign` also need
+`ticket.assign`, checked for the whole request → 403 `PERMISSION_DENIED`):
+
+| `action`     | `payload`                                            |
+|--------------|------------------------------------------------------|
+| `assign`     | `{ assignedAgentId?, departmentId? }` (at least one) |
+| `unassign`   | none — clears the agent, keeps the department        |
+| `status`     | `{ statusId, resolutionNote? }`                      |
+| `resolve`    | `{ resolutionNote }`                                 |
+| `close`      | none                                                 |
+| `reopen`     | none                                                 |
+| `priority`   | `{ priorityId }`                                     |
+| `addTags`    | `{ tagIds }` (1–50) — added to each ticket's set     |
+| `removeTags` | `{ tagIds }` (1–50) — removed from each ticket's set |
+
+Each ticket runs through the same code as its single-ticket endpoint, one after another,
+so visibility, blueprints, the resolution-note rule (moving to a resolving status without
+a note fails for tickets that have none), history, SLA, notifications and automation all
+apply. A malformed request is a 400; otherwise the answer is 200 with per-ticket results:
+
+```
+{ "action": "status", "succeeded": 1, "failed": 1,
+  "results": [ { "id": "…", "ok": true },
+               { "id": "…", "ok": false, "error": { "code": "VALIDATION_ERROR", "message": "…" } } ] }
+```
+
+A ticket in another organization, or one the caller cannot see, fails with
+`TICKET_NOT_FOUND`. Duplicate ids are processed once.
+
+**Download as a link** — `GET /attachments/:id/download?mode=url` (or any request whose
+`Accept` includes `application/json`; the portal route
+`/portal/:slug/tickets/attachments/:id/download` behaves the same) runs the same
+authorisation and answers `{ url, fileName, mimeType, fileSize, expiresAt, direct }`
+with `Cache-Control: no-store`. With S3 `url` is the pre-signed link, `expiresAt` its
+expiry (`S3_SIGNED_URL_TTL_SECONDS`) and `direct: true`. With local storage there is
+nothing to sign: `url` is this API route itself (path only, without the query),
+`expiresAt` is null and `direct: false` — fetch it with the same bearer token. Without
+the flag the behaviour is unchanged (302 / stream).
 
 ## Activities — P3 (implemented)
 ```
@@ -228,6 +279,8 @@ POST /portal/:slug/forms/:formSlug/submit   # { values, website? } -> ticket (so
 
 POST /portal/:slug/auth/register            # { firstName, lastName?, email, password }
 POST /portal/:slug/auth/login
+POST /portal/:slug/auth/refresh             # ds_portal_refresh cookie -> new access token (rotates)
+POST /portal/:slug/auth/logout
 POST /portal/:slug/auth/forgot-password     # reset link points back at this help center
 GET  /portal/:slug/auth/me
 
@@ -251,8 +304,11 @@ DELETE /portal/:slug/community/replies/:id
 ```
 
 A portal visitor is a `User` of type `CUSTOMER` linked to a `Contact`, so the session,
-refresh-token rotation and password rules are the ones the agent app already uses:
-`/auth/refresh` and `/auth/logout` serve both audiences. Sign-up reuses the contact an
+refresh-token rotation and password rules are the ones the agent app already uses. The
+refresh cookie is the portal's own, though — `ds_portal_refresh`, scoped to
+`/api/v1/portal/:slug/auth` — and is renewed only by that help center's
+`/portal/:slug/auth/refresh`, which refuses agent tokens and other organizations'
+customers (401). An agent session and a portal session in one browser never collide. Sign-up reuses the contact an
 agent (or an earlier form submission) already created for that email address, so the
 customer sees their existing requests the first time they sign in.
 

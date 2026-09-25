@@ -4,17 +4,19 @@ import {
   Get,
   Param,
   Post,
+  Req,
   Res,
   UploadedFile as UploadedFileParam,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { PERMISSIONS, type AuthenticatedUser } from '@digisoft/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { AppError } from '../common/errors/app-error';
 import { AttachmentsService, type UploadedFile } from './attachments.service';
+import { sendAttachmentDownload } from './attachment-download';
 
 @Controller()
 export class AttachmentsController {
@@ -42,40 +44,18 @@ export class AttachmentsController {
 
   /**
    * Authorised download. Object storage answers with a short-lived signed URL; local
-   * storage is streamed through the API so the same checks apply either way.
+   * storage is streamed through the API so the same checks apply either way. With
+   * `?mode=url` (or `Accept: application/json`) the link comes back as JSON instead.
    */
   @RequirePermissions(PERMISSIONS.TICKET_READ)
   @Get('attachments/:id/download')
   async download(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    const { target, fileName, mimeType, fileSize } = await this.attachments.download(id, user);
-
-    if (target.url) {
-      res.redirect(302, target.url);
-      return;
-    }
-    if (!target.stream) {
-      throw AppError.notFound('attachment');
-    }
-
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Length', fileSize);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(fileName)}"`,
-    );
-    // Stops a stored SVG or HTML file from executing in the product's own origin.
-    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    // A file missing from storage must fail this request, not the process.
-    target.stream.on('error', () => {
-      if (!res.headersSent) res.status(500);
-      res.end();
-    });
-    target.stream.pipe(res);
+    sendAttachmentDownload(req, res, await this.attachments.download(id, user));
   }
 
   @RequirePermissions(PERMISSIONS.ATTACHMENT_DELETE)

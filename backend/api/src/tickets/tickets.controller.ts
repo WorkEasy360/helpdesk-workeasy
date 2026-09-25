@@ -13,6 +13,7 @@ import {
 import {
   PERMISSIONS,
   assignTicketSchema,
+  bulkUpdateTicketsSchema,
   changePrioritySchema,
   changeStatusSchema,
   createMessageSchema,
@@ -26,6 +27,7 @@ import {
   updateTicketSchema,
   type AssignTicketInput,
   type AuthenticatedUser,
+  type BulkUpdateTicketsInput,
   type ChangePriorityInput,
   type ChangeStatusInput,
   type CreateMessageInput,
@@ -64,6 +66,17 @@ export class TicketsController {
   @Get('summary')
   summary(@CurrentUser() user: AuthenticatedUser) {
     return this.tickets.summary(user);
+  }
+
+  /** One action over up to 100 tickets; see TicketsService.bulkUpdate. */
+  @RequirePermissions(PERMISSIONS.TICKET_UPDATE)
+  @HttpCode(HttpStatus.OK)
+  @Post('bulk')
+  bulkUpdate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(bulkUpdateTicketsSchema)) dto: BulkUpdateTicketsInput,
+  ) {
+    return this.tickets.bulkUpdate(user, dto);
   }
 
   @RequirePermissions(PERMISSIONS.TICKET_READ)

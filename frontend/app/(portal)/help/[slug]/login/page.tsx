@@ -25,7 +25,10 @@ export default function PortalLoginPage({ params }: { params: Promise<{ slug: st
   const [busy, setBusy] = useState(false);
 
   const config = useQuery({ queryKey: ['portal-config', slug], queryFn: api.config });
-  const next = searchParams.get('next');
+  // A path inside this help center only, e.g. "tickets" or "tickets/abc123".
+  const rawNext = searchParams.get('next');
+  const next =
+    rawNext && /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$/.test(rawNext) ? rawNext : null;
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

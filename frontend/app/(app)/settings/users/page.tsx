@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Mail, Plus } from 'lucide-react';
+import { Mail, Pencil, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { PERMISSIONS } from '@digisoft/shared';
 import { ApiError } from '@/lib/api-client';
@@ -10,7 +10,10 @@ import { usersService } from '@/services/settings.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { formatDateTime } from '@/lib/utils';
 import { UserFormDialog } from '@/components/settings/user-form-dialog';
+import { UserEditDialog } from '@/components/settings/user-edit-dialog';
+import type { UserSummary } from '@/types/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { DataTable, TBody, TD, TH, THead, TR } from '@/components/ui/table';
@@ -21,8 +24,10 @@ export default function UsersSettingsPage() {
   const can = useAuthStore((state) => state.can);
   const currentUser = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<UserSummary | null>(null);
 
   const users = useQuery({
     queryKey: ['users', { page }],
@@ -122,11 +127,33 @@ export default function UsersSettingsPage() {
                             <Mail className="h-4 w-4" aria-hidden />
                           </Button>
                         ) : null}
+                        {can(PERMISSIONS.USER_UPDATE) ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Edit ${user.firstName} ${user.lastName}`}
+                            onClick={() => setEditing(user)}
+                          >
+                            <Pencil className="h-4 w-4" aria-hidden />
+                          </Button>
+                        ) : null}
                         {can(PERMISSIONS.USER_UPDATE) && user.id !== currentUser?.id ? (
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setActive.mutate({ id: user.id, active: !user.isActive })}
+                            onClick={async () => {
+                              if (
+                                user.isActive &&
+                                !(await confirm({
+                                  title: `Deactivate ${user.firstName} ${user.lastName}?`,
+                                  description: 'They will be signed out and unable to sign in until reactivated.',
+                                  confirmLabel: 'Deactivate',
+                                }))
+                              ) {
+                                return;
+                              }
+                              setActive.mutate({ id: user.id, active: !user.isActive });
+                            }}
                           >
                             {user.isActive ? 'Deactivate' : 'Activate'}
                           </Button>
@@ -143,6 +170,12 @@ export default function UsersSettingsPage() {
       </Card>
 
       <UserFormDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <UserEditDialog
+        user={editing}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+      />
     </>
   );
 }

@@ -1,0 +1,6 @@
+# Scripts, templates and env files run/are read on Linux: never check them out with CRLF.
+*.sh        text eol=lf
+*.template  text eol=lf
+*.sql       text eol=lf
+*.yml       text eol=lf
+.env*       text eol=lf

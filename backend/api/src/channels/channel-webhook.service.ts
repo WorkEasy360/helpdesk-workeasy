@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantContext } from '@digisoft/db';
-import { providerFor } from '@digisoft/channels';
+import { providerFor, safeEqual } from '@digisoft/channels';
 import type { ChannelType } from '@digisoft/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppError } from '../common/errors/app-error';
@@ -25,6 +25,8 @@ export interface WebhookRequest {
 @Injectable()
 export class ChannelWebhookService {
   private readonly logger = new Logger(ChannelWebhookService.name);
+  /** Channels already warned about, so an unsigned channel does not flood the log. */
+  private readonly warnedUnsigned = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -54,6 +56,15 @@ export class ChannelWebhookService {
     }
 
     const secrets = this.secrets.open(channel.secrets);
+    if (provider.hasProviderAuth && !provider.hasProviderAuth(secrets)) {
+      if (!this.warnedUnsigned.has(channel.id)) {
+        this.warnedUnsigned.add(channel.id);
+        this.logger.warn(
+          `Channel ${channel.id} (${channel.provider}) has no provider signing secret configured; ` +
+            'only the webhook URL secret authenticates its requests',
+        );
+      }
+    }
     const verified = provider.verify(
       {
         rawBody: request.rawBody,
@@ -115,7 +126,7 @@ export class ChannelWebhookService {
     });
 
     // A wrong id and a wrong secret answer identically, so neither can be probed.
-    if (!channel || !channel.webhookSecret || channel.webhookSecret !== secret) {
+    if (!channel || !channel.webhookSecret || !safeEqual(channel.webhookSecret, secret)) {
       throw AppError.notFound('webhook');
     }
     if (!channel.isActive) {

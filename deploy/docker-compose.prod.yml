@@ -1,0 +1,177 @@
+# Digisoft360 Help Desk — production stack for a single EC2 host.
+#
+#   cd deploy
+#   cp .env.example .env && $EDITOR .env        # see README.md
+#   ./scripts/deploy.sh                          # build, migrate, up
+#
+# Only nginx publishes ports (80/443). Postgres is the shared Aurora/RDS cluster
+# (DATABASE_URL, schema `helpdesk`); email is SES and attachments are S3, both via the
+# EC2 instance role — there is no postgres, minio or mailhog here.
+#
+# Compose reads deploy/.env for ${...} substitution in this file (it sits next to it)
+# and the app services load the same file as their environment.
+
+name: digisoft-helpdesk-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
+# required: false only so `config` can be validated against .env.example alone;
+# deploy.sh refuses to run without .env, and ${DOMAIN:?} fails without it anyway.
+x-app-env-file: &app-env-file
+  - path: .env
+    required: false
+
+x-backend-env: &backend-env
+  NODE_ENV: production
+  # Built here so the password lives in exactly one variable.
+  REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env}@redis:6379
+  FRONTEND_URL: https://${DOMAIN:?set DOMAIN in deploy/.env}
+  BACKEND_URL: https://${DOMAIN}
+  PUBLIC_API_URL: https://${DOMAIN}
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # noeviction: BullMQ must never have queue keys evicted under memory pressure.
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --appendonly
+      - 'yes'
+      - --maxmemory-policy
+      - noeviction
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes: ['redis-data:/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+
+  # One-off release step, never started by `up`:
+  #   docker compose -f docker-compose.prod.yml --profile migrate run --rm migrate
+  # Runs `prisma migrate deploy` only. NEVER point `migrate dev`, `migrate reset` or
+  # `db push` at the shared Aurora database.
+  migrate:
+    image: digisoft-api:${IMAGE_TAG:-latest}
+    profiles: ['migrate']
+    env_file: *app-env-file
+    environment:
+      NODE_ENV: production
+    working_dir: /app
+    command: ['pnpm', '--filter', '@digisoft/db', 'migrate:deploy']
+    restart: 'no'
+    logging: *logging
+
+  api:
+    image: digisoft-api:${IMAGE_TAG:-latest}
+    build:
+      context: ../backend
+      dockerfile: api/Dockerfile
+    restart: unless-stopped
+    env_file: *app-env-file
+    environment:
+      <<: *backend-env
+    expose: ['4000']
+    depends_on:
+      redis: { condition: service_healthy }
+    # Readiness: /health reports degraded (and, once the hardening pass lands, 503s)
+    # when Postgres or Redis is unreachable.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>r.json().then(b=>process.exit(r.ok&&(b.data??b).status==='ok'?0:1))).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+    logging: *logging
+
+  worker:
+    image: digisoft-worker:${IMAGE_TAG:-latest}
+    build:
+      context: ../backend
+      dockerfile: worker/Dockerfile
+    restart: unless-stopped
+    env_file: *app-env-file
+    environment:
+      <<: *backend-env
+    depends_on:
+      redis: { condition: service_healthy }
+    logging: *logging
+
+  web:
+    image: digisoft-web:${IMAGE_TAG:-latest}
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      # Inlined into the browser bundle at build time: changing DOMAIN means a rebuild.
+      # NEXT_PUBLIC_API_URL also feeds the CSP connect-src that next.config.mjs bakes in.
+      args:
+        NEXT_PUBLIC_API_URL: https://${DOMAIN}/api/v1
+        NEXT_PUBLIC_SOCKET_URL: https://${DOMAIN}
+        NEXT_PUBLIC_APP_VERSION: ${APP_VERSION:-}
+    restart: unless-stopped
+    # Deliberately no env_file: the web server needs none of the backend secrets.
+    environment:
+      NODE_ENV: production
+      # Server-side fetches from the Next server go straight to the api container
+      # over the compose network instead of out through nginx and back.
+      API_INTERNAL_URL: http://api:4000/api/v1
+    expose: ['3000']
+    logging: *logging
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports: ['80:80', '443:443']
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      # The official image renders /etc/nginx/templates/*.template into conf.d with
+      # envsubst (only ${DOMAIN}; nginx's own $variables are left alone). Named
+      # default.conf.template so it replaces the stock default server.
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - certbot-conf:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    depends_on: [api, web]
+    # Reload every 6h so renewed certificates are picked up without a restart.
+    command:
+      - /bin/sh
+      - -c
+      - 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec /docker-entrypoint.sh nginx -g "daemon off;"'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1/nginx-health || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *logging
+
+  # Renews certificates twice a day (a no-op until one is within 30 days of expiry).
+  # First issuance is scripts/init-letsencrypt.sh.
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
+    logging: *logging
+
+volumes:
+  redis-data:
+  certbot-conf:
+  certbot-www:

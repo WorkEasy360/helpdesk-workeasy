@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { refreshAccessToken } from '@/lib/api-client';
 import { authService } from '@/services/auth.service';
 import { useAuthStore } from '@/stores/auth.store';
@@ -21,7 +21,7 @@ export function useSessionBootstrap(): 'loading' | 'authenticated' | 'anonymous'
     let cancelled = false;
 
     void (async () => {
-      const token = await refreshAccessToken();
+      const token = await refreshAccessToken({ portalSlug: null });
       if (cancelled) return;
       if (!token) {
         setUser(null);
@@ -43,16 +43,24 @@ export function useSessionBootstrap(): 'loading' | 'authenticated' | 'anonymous'
   return status;
 }
 
-/** Sends anonymous visitors to the login page once the bootstrap has settled. */
+/**
+ * Sends anonymous visitors to the login page once the bootstrap has settled, carrying
+ * the page they asked for so sign-in can return them to it.
+ */
 export function useRequireAuth(): 'loading' | 'authenticated' {
   const status = useSessionBootstrap();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (status === 'anonymous') {
-      router.replace('/login');
+      // Read at redirect time so the query string (filters, tabs) survives as well.
+      const current =
+        typeof window === 'undefined' ? pathname : `${window.location.pathname}${window.location.search}`;
+      const next = current && current !== '/' && current !== '/login' ? `?next=${encodeURIComponent(current)}` : '';
+      router.replace(`/login${next}`);
     }
-  }, [status, router]);
+  }, [status, router, pathname]);
 
   return status === 'authenticated' ? 'authenticated' : 'loading';
 }

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './pagination';
 import { passwordSchema } from './auth';
-import { optionalField, queryBoolean } from './field';
+import { optionalField, queryBoolean, patchSchema } from './field';
 
 export const createUserSchema = z.object({
   firstName: z.string().trim().min(1).max(80),
@@ -45,5 +45,5 @@ export const createRoleSchema = z.object({
 export type CreateRoleInput = z.infer<typeof createRoleSchema>;
 export type RoleFormValues = z.input<typeof createRoleSchema>;
 
-export const updateRoleSchema = createRoleSchema.partial();
+export const updateRoleSchema = patchSchema(createRoleSchema);
 export type UpdateRoleInput = z.infer<typeof updateRoleSchema>;

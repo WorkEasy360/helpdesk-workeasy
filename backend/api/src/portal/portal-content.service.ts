@@ -110,8 +110,11 @@ export class PortalContentService {
     return { items, meta: pageMeta(query, total) };
   }
 
-  /** Article page: the article, its neighbours, and a view counted once per request. */
-  async article(viewer: AuthenticatedUser | null, idOrSlug: string) {
+  /**
+   * Article page: the article, its neighbours, and a view counted once per request —
+   * unless `countView` is off, for the server-side fetch that only builds page metadata.
+   */
+  async article(viewer: AuthenticatedUser | null, idOrSlug: string, countView = true) {
     const article = await this.db.kbArticle.findFirst({
       where: { AND: [this.articleFilter(viewer), { OR: [{ id: idOrSlug }, { slug: idOrSlug }] }] },
       select: ARTICLE_DETAIL_SELECT,
@@ -120,10 +123,12 @@ export class PortalContentService {
       throw AppError.notFound('article');
     }
 
-    await this.db.kbArticle.update({
-      where: { id: article.id },
-      data: { viewCount: { increment: 1 } },
-    });
+    if (countView) {
+      await this.db.kbArticle.update({
+        where: { id: article.id },
+        data: { viewCount: { increment: 1 } },
+      });
+    }
 
     const related = article.category
       ? await this.db.kbArticle.findMany({

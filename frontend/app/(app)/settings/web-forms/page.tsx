@@ -11,6 +11,7 @@ import { helpCenterService } from '@/services/help-center.service';
 import { useAuthStore } from '@/stores/auth.store';
 import type { WebForm } from '@/types/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { DataTable, TBody, TD, TH, THead, TR } from '@/components/ui/table';
@@ -19,6 +20,7 @@ import { WebFormDialog } from '@/components/help-center/web-form-dialog';
 
 export default function WebFormsPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const can = useAuthStore((state) => state.can);
   const manage = can(PERMISSIONS.PORTAL_MANAGE);
   const [dialog, setDialog] = useState<{ open: boolean; form: WebForm | null }>({ open: false, form: null });
@@ -112,7 +114,14 @@ export default function WebFormsPage() {
                             variant="ghost"
                             size="icon"
                             aria-label={`Delete ${form.name}`}
-                            onClick={() => remove.mutate(form.id)}
+                            onClick={() =>
+                              void confirm({
+                                title: `Delete ${form.name}?`,
+                                description: 'Customers will no longer be able to submit this form.',
+                                confirmLabel: 'Delete form',
+                                onConfirm: () => remove.mutateAsync(form.id),
+                              })
+                            }
                           >
                             <Trash2 className="h-4 w-4" aria-hidden />
                           </Button>

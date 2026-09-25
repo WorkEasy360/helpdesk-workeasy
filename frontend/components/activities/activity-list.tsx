@@ -11,12 +11,14 @@ import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDateTime } from '@/lib/utils';
 import type { Activity } from '@/types/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 
 const ICONS = { TASK: ClipboardList, CALL: Phone, EVENT: CalendarDays } as const;
 
 export function ActivityList({ activities, showTicket = true }: { activities: Activity[]; showTicket?: boolean }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const can = useAuthStore((state) => state.can);
 
   const refresh = async (activity: Activity) => {
@@ -71,7 +73,7 @@ export function ActivityList({ activities, showTicket = true }: { activities: Ac
               </Button>
             ) : null}
             {can(PERMISSIONS.ACTIVITY_DELETE) ? (
-              <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => window.confirm('Delete this activity?') && remove.mutate(activity)}>
+              <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => void confirm({ title: 'Delete this activity?', confirmLabel: 'Delete', onConfirm: () => remove.mutateAsync(activity) })}>
                 <Trash2 className="h-4 w-4" aria-hidden />
               </Button>
             ) : null}

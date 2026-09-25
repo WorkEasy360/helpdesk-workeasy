@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './pagination';
-import { optionalField } from './field';
+import { optionalField, patchSchema } from './field';
 
 export const createAccountSchema = z.object({
   name: z.string().trim().min(1).max(150),
@@ -20,7 +20,7 @@ export const createAccountSchema = z.object({
 export type CreateAccountInput = z.infer<typeof createAccountSchema>;
 export type AccountFormValues = z.input<typeof createAccountSchema>;
 
-export const updateAccountSchema = createAccountSchema.partial();
+export const updateAccountSchema = patchSchema(createAccountSchema);
 export type UpdateAccountInput = z.infer<typeof updateAccountSchema>;
 
 export const listAccountsQuerySchema = paginationQuerySchema.extend({

@@ -18,8 +18,16 @@ import { TicketAiPanel } from '@/components/tickets/ticket-ai-panel';
 import { StatusBadge, PriorityBadge } from '@/components/tickets/ticket-badges';
 import { Button } from '@/components/ui/button';
 import { ErrorState, LoadingState } from '@/components/ui/states';
+import { Tabs, TabPanel } from '@/components/ui/tabs';
 
 type Tab = 'conversation' | 'assistant' | 'activities' | 'history';
+
+const TABS: { value: Tab; label: string }[] = [
+  { value: 'conversation', label: 'Conversation' },
+  { value: 'assistant', label: 'Assistant' },
+  { value: 'activities', label: 'Activities' },
+  { value: 'history', label: 'History' },
+];
 
 /**
  * Three-pane agent workspace: queue on the left, conversation in the middle, ticket
@@ -126,32 +134,18 @@ export default function TicketWorkspacePage() {
             </Button>
           </div>
 
-          <div role="tablist" aria-label="Ticket panels" className="mt-2 flex gap-1">
-            {(['conversation', 'assistant', 'activities', 'history'] as const).map((key) => (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                aria-selected={tab === key}
-                onClick={() => setTab(key)}
-                className={cn(
-                  'rounded-md px-3 py-1 text-sm',
-                  tab === key ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted',
-                )}
-              >
-                {key === 'conversation'
-                  ? 'Conversation'
-                  : key === 'assistant'
-                    ? 'Assistant'
-                    : key === 'activities'
-                      ? 'Activities'
-                      : 'History'}
-              </button>
-            ))}
-          </div>
+          <Tabs
+            idBase="ticket"
+            label="Ticket panels"
+            variant="pill"
+            className="mt-2"
+            items={TABS}
+            value={tab}
+            onValueChange={setTab}
+          />
         </header>
 
-        <div className="flex-1 overflow-y-auto">
+        <TabPanel idBase="ticket" value={tab} className="flex-1 overflow-y-auto">
           {tab === 'conversation' ? (
             <TicketConversation ticket={data} />
           ) : tab === 'assistant' ? (
@@ -161,7 +155,7 @@ export default function TicketWorkspacePage() {
           ) : (
             <TicketHistory ticketId={data.id} />
           )}
-        </div>
+        </TabPanel>
 
         {tab === 'conversation' ? <TicketComposer ticketId={data.id} /> : null}
       </section>

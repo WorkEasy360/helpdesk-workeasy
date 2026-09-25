@@ -155,6 +155,48 @@ describe('mailgun provider', () => {
     ).toBe(false);
   });
 
+  it('verifies a form-encoded route post', () => {
+    const form = new URLSearchParams({
+      timestamp,
+      token,
+      signature,
+      sender: 'rhea@example.com',
+      'body-plain': 'Nothing loads.',
+    }).toString();
+    const headers = { 'content-type': 'application/x-www-form-urlencoded' };
+    expect(mailgunEmailProvider.verify({ rawBody: form, headers, query: {} }, { signingKey })).toBe(true);
+    expect(
+      mailgunEmailProvider.verify(
+        { rawBody: form.replace(signature, 'forged'), headers, query: {} },
+        { signingKey },
+      ),
+    ).toBe(false);
+  });
+
+  it('maps form fields, JSON-encoded headers and attachments', () => {
+    const [message] = mailgunEmailProvider.parse(
+      {
+        from: 'Rhea <rhea@example.com>',
+        recipient: 'support@example.com',
+        subject: 'Help please',
+        'body-plain': 'Nothing loads.',
+        'message-headers': JSON.stringify([
+          ['Message-Id', '<mg-2@example.com>'],
+          ['In-Reply-To', '<prev@example.com>'],
+        ]),
+        attachments: JSON.stringify([
+          { url: 'https://storage.mailgun.net/v3/x', 'content-type': 'image/png', name: 'a.png' },
+        ]),
+      },
+      context,
+    );
+    expect(message).toMatchObject({
+      externalId: '<mg-2@example.com>',
+      inReplyTo: '<prev@example.com>',
+      attachments: [{ fileName: 'a.png', mimeType: 'image/png', url: 'https://storage.mailgun.net/v3/x' }],
+    });
+  });
+
   it('maps the payload', () => {
     const [message] = mailgunEmailProvider.parse(body, context);
     expect(message).toMatchObject({

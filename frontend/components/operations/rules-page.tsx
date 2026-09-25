@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { formatDateTime } from '@/lib/utils';
 import type { AutomationRule } from '@/types/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable, TBody, TD, TH, THead, TR } from '@/components/ui/table';
@@ -20,6 +21,7 @@ import { RuleFormDialog, TRIGGER_LABELS } from './rule-form-dialog';
 /** Shared by the workflow-rules and escalations tabs; only the trigger set differs. */
 export function RulesPage({ escalation }: { escalation: boolean }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const can = useAuthStore((state) => state.can);
   const manage = can(PERMISSIONS.OPERATIONS_MANAGE);
   const [dialog, setDialog] = useState<{ open: boolean; rule: AutomationRule | null }>({ open: false, rule: null });
@@ -75,7 +77,7 @@ export function RulesPage({ escalation }: { escalation: boolean }) {
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" aria-label={rule.isActive ? 'Disable' : 'Enable'} onClick={() => toggle.mutate(rule)}><Power className="h-4 w-4" aria-hidden /></Button>
                         <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setDialog({ open: true, rule })}><Pencil className="h-4 w-4" aria-hidden /></Button>
-                        <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => window.confirm(`Delete "${rule.name}"?`) && remove.mutate(rule.id)}><Trash2 className="h-4 w-4" aria-hidden /></Button>
+                        <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => void confirm({ title: `Delete "${rule.name}"?`, confirmLabel: 'Delete', onConfirm: () => remove.mutateAsync(rule.id) })}><Trash2 className="h-4 w-4" aria-hidden /></Button>
                       </div>
                     ) : null}
                   </TD>

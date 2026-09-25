@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import type { ReportFilterValue } from './report-filters';
 import { toQuery } from './report-filters';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Input, Select } from '@/components/ui/input';
 import { ApiError } from '@/lib/api-client';
 
@@ -28,6 +29,7 @@ export function SavedReports({
 }) {
   const can = useAuthStore((state) => state.can);
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [selectedId, setSelectedId] = useState('');
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
@@ -99,7 +101,13 @@ export function SavedReports({
           type="button"
           variant="ghost"
           size="icon"
-          onClick={() => remove.mutate(selectedId)}
+          onClick={() =>
+            void confirm({
+              title: 'Delete this saved view?',
+              confirmLabel: 'Delete',
+              onConfirm: () => remove.mutateAsync(selectedId),
+            })
+          }
           loading={remove.isPending}
           aria-label="Delete this saved view"
         >

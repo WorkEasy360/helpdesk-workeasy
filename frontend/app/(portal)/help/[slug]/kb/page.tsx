@@ -4,10 +4,11 @@ import { use, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { ApiError } from '@/lib/api-client';
 import { portalService } from '@/services/portal.service';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select } from '@/components/ui/input';
-import { EmptyState, LoadingState } from '@/components/ui/states';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { Pagination } from '@/components/ui/pagination';
 import { ArticleSearch } from '@/components/portal/article-search';
 
@@ -52,6 +53,13 @@ export default function PortalKnowledgeBase({ params }: { params: Promise<{ slug
 
       {articles.isPending ? (
         <LoadingState />
+      ) : articles.isError ? (
+        <ErrorState
+          message={
+            articles.error instanceof ApiError ? articles.error.message : 'Unable to load articles.'
+          }
+          onRetry={() => articles.refetch()}
+        />
       ) : articles.data && articles.data.items.length > 0 ? (
         <>
           <div className="space-y-3">

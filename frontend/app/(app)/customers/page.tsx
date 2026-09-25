@@ -13,6 +13,7 @@ import { formatDate } from '@/lib/utils';
 import { PageHeader } from '@/components/layout/page-header';
 import { ContactFormDialog } from '@/components/customers/contact-form-dialog';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -23,6 +24,7 @@ import { EmptyState, ErrorState, TableSkeleton } from '@/components/ui/states';
 export default function CustomersPage() {
   const can = useAuthStore((state) => state.can);
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
@@ -164,11 +166,14 @@ export default function CustomersPage() {
                           variant="ghost"
                           size="icon"
                           aria-label={`Delete ${contact.firstName}`}
-                          onClick={() => {
-                            if (window.confirm(`Delete ${contact.firstName}? This can be undone by an administrator.`)) {
-                              remove.mutate(contact.id);
-                            }
-                          }}
+                          onClick={() =>
+                            void confirm({
+                              title: `Delete ${contact.firstName}?`,
+                              description: 'This can be undone by an administrator.',
+                              confirmLabel: 'Delete contact',
+                              onConfirm: () => remove.mutateAsync(contact.id),
+                            })
+                          }
                         >
                           <Trash2 className="h-4 w-4" aria-hidden />
                         </Button>

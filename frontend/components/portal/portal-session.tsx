@@ -1,8 +1,8 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { refreshAccessToken, setAccessToken } from '@/lib/api-client';
-import { authService } from '@/services/auth.service';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { refreshAccessToken, setAccessToken, setPortalSession } from '@/lib/api-client';
 import { portalService } from '@/services/portal.service';
 import type { PortalProfile } from '@/types/api';
 
@@ -18,12 +18,17 @@ interface PortalSession {
 const PortalSessionContext = createContext<PortalSession | null>(null);
 
 /**
- * Restores a customer session from the same http-only refresh cookie the agent app
- * uses, then keeps the profile in memory. The access token is never persisted.
+ * Restores a customer session from this help center's own http-only refresh cookie
+ * (`ds_portal_refresh`, renewed at `/portal/:slug/auth/refresh`), then keeps the profile
+ * in memory. It never touches the agent app's session cookie, and the access token is
+ * never persisted.
  */
 export function PortalSessionProvider({ slug, children }: { slug: string; children: React.ReactNode }) {
   const [profile, setProfile] = useState<PortalProfile | null>(null);
   const [status, setStatus] = useState<'loading' | 'signed-in' | 'anonymous'>('loading');
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  const queryClient = useQueryClient();
 
   const load = useCallback(async () => {
     try {
@@ -36,10 +41,31 @@ export function PortalSessionProvider({ slug, children }: { slug: string; childr
     }
   }, [slug]);
 
+  // Drops everything fetched as this customer. Only the public site configuration is
+  // kept, so the shell does not flash.
+  const forget = useCallback(() => {
+    setAccessToken(null);
+    setProfile(null);
+    setStatus('anonymous');
+    queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'portal-config' });
+  }, [queryClient]);
+
+  // Route this page's refreshes to the help center's auth routes, and hear about a
+  // session that could not be renewed. Leaving the help center hands the page back.
+  useEffect(() => {
+    setPortalSession(slug, () => {
+      if (statusRef.current === 'signed-in') forget();
+    });
+    return () => {
+      setPortalSession(null);
+      setAccessToken(null);
+    };
+  }, [slug, forget]);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const token = await refreshAccessToken();
+      const token = await refreshAccessToken({ portalSlug: slug });
       if (cancelled) return;
       if (!token) {
         setStatus('anonymous');
@@ -50,7 +76,7 @@ export function PortalSessionProvider({ slug, children }: { slug: string; childr
     return () => {
       cancelled = true;
     };
-  }, [load]);
+  }, [slug, load]);
 
   const value = useMemo<PortalSession>(
     () => ({
@@ -62,14 +88,12 @@ export function PortalSessionProvider({ slug, children }: { slug: string; childr
         await load();
       },
       signOut: async () => {
-        await authService.logout().catch(() => undefined);
-        setAccessToken(null);
-        setProfile(null);
-        setStatus('anonymous');
+        await portalService(slug).logout().catch(() => undefined);
+        forget();
       },
       reload: load,
     }),
-    [slug, profile, status, load],
+    [slug, profile, status, load, forget],
   );
 
   return <PortalSessionContext.Provider value={value}>{children}</PortalSessionContext.Provider>;

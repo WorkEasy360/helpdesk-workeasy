@@ -2,13 +2,15 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import type { Prisma, TenantPrismaClient, TicketSource } from '@digisoft/db';
-import { ticketNumberFromSubject, type InboundMessage } from '@digisoft/channels';
+import { safeFetch, ticketNumberFromSubject, type InboundMessage } from '@digisoft/channels';
 import type { ChannelType } from '@digisoft/shared';
 import { TENANT_PRISMA } from '../prisma/prisma.module';
 import { TicketsService } from '../tickets/tickets.service';
 import { TicketMessagesService } from '../tickets/ticket-messages.service';
 import { STORAGE_PROVIDER, type StorageProvider } from '@digisoft/storage';
 import { AppConfig } from '../config/config.module';
+
+const ATTACHMENT_FETCH_TIMEOUT_MS = 20_000;
 
 /** Channel type → the ticket source recorded on the ticket and its messages. */
 const SOURCE_BY_TYPE: Record<ChannelType, TicketSource> = {
@@ -373,7 +375,7 @@ export class InboundService {
       try {
         const buffer = attachment.contentBase64
           ? Buffer.from(attachment.contentBase64, 'base64')
-          : await this.fetchAttachment(attachment.url);
+          : await this.fetchAttachment(attachment.url, maxBytes);
         if (!buffer || buffer.length === 0 || buffer.length > maxBytes) {
           this.logger.warn(
             `Skipped inbound attachment ${attachment.fileName}: ${buffer ? 'too large' : 'could not be fetched'}`,
@@ -409,14 +411,18 @@ export class InboundService {
     }
   }
 
-  private async fetchAttachment(url: string | undefined): Promise<Buffer | null> {
+  /**
+   * The URL comes from the webhook payload, so it is fetched through the SSRF guard:
+   * public addresses only, redirects re-checked, and the body capped while it streams.
+   */
+  private async fetchAttachment(url: string | undefined, maxBytes: number): Promise<Buffer | null> {
     if (!url) {
       return null;
     }
-    const response = await fetch(url);
+    const response = await safeFetch(url, { maxBytes, timeoutMs: ATTACHMENT_FETCH_TIMEOUT_MS });
     if (!response.ok) {
       return null;
     }
-    return Buffer.from(await response.arrayBuffer());
+    return response.body;
   }
 }

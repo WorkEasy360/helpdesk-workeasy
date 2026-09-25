@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import {
@@ -7,6 +7,7 @@ import {
   loginSchema,
   registerSchema,
   resetPasswordSchema,
+  updateUserSchema,
   verifyEmailSchema,
   type AuthenticatedUser,
   type ChangePasswordInput,
@@ -16,6 +17,7 @@ import {
   type LoginResult,
   type RegisterInput,
   type ResetPasswordInput,
+  type UpdateUserInput,
   type VerifyEmailInput,
 } from '@digisoft/shared';
 import { Public } from '../common/decorators/public.decorator';
@@ -34,6 +36,13 @@ export class AuthController {
     private readonly config: AppConfig,
   ) {}
 
+  /** Lets the sign-up page know whether to offer organization registration at all. */
+  @Public()
+  @Get('register')
+  registrationStatus(): { enabled: boolean } {
+    return { enabled: this.config.get('ALLOW_PUBLIC_REGISTRATION') };
+  }
+
   @Public()
   @Throttle({ auth: { limit: 5, ttl: 60_000 } })
   @Post('register')
@@ -42,6 +51,10 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
+    // Self-hosted and invite-only deployments turn off creating new organizations.
+    if (!this.config.get('ALLOW_PUBLIC_REGISTRATION')) {
+      throw AppError.forbidden('New organization sign-up is disabled', 'REGISTRATION_DISABLED');
+    }
     const session = await this.auth.register(dto, this.meta(req));
     return this.respondWithSession(res, session);
   }
@@ -95,6 +108,15 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser): AuthenticatedUser {
     return user;
+  }
+
+  /** Any signed-in user may edit their own name, phone and avatar; nothing else. */
+  @Patch('me')
+  updateMe(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodBody(updateUserSchema)) dto: UpdateUserInput,
+  ): Promise<AuthenticatedUser> {
+    return this.auth.updateProfile(user, dto);
   }
 
   @Public()

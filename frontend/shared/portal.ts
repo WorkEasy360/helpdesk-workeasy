@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './pagination';
-import { optionalField, queryBoolean } from './field';
+import { optionalField, queryBoolean, patchSchema } from './field';
 import { passwordSchema } from './auth';
 import { slugSchema } from './slug';
 
@@ -117,7 +117,7 @@ export const webFormSchema = z.object({
 export type WebFormInput = z.infer<typeof webFormSchema>;
 export type WebFormFormValues = z.input<typeof webFormSchema>;
 
-export const updateWebFormSchema = webFormSchema.partial();
+export const updateWebFormSchema = patchSchema(webFormSchema);
 export type UpdateWebFormInput = z.infer<typeof updateWebFormSchema>;
 
 const submissionValue = z.union([

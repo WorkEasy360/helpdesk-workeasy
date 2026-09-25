@@ -1,76 +1,84 @@
 # Deployment
 
-Phase 1 ships a deployable stack, but it has not been run in a production environment
-yet. Treat this as the intended topology plus the checklist that must be completed
-before exposing it publicly.
+The production target is **one EC2 instance running Docker Compose** (nginx + Let's
+Encrypt, api, worker, web, redis) against an **existing shared Aurora/RDS PostgreSQL**
+database (own schema `helpdesk`, own least-privilege role), with **SES** for email and
+**S3** for attachments, both through the EC2 instance role.
+
+**The step-by-step runbook is [`deploy/README.md`](../../deploy/README.md).** This page
+summarises the design and the rules that apply to any environment.
 
 ## Topology
 
 ```
-            Users
-              |
-         Nginx / ALB  (TLS termination)
-         /          \
-   Next.js          NestJS API  ──────────┐
-  (Vercel or         (EC2 / ECS,          │
-   a container)       2+ instances)       │
-                          |               │
-              ┌───────────┼───────────┐   │
-          PostgreSQL   Redis        S3    │
-          (RDS/Aiven) (ElastiCache)       │
-                          |               │
-                    Worker process  ──────┘
-                 (same image, different command)
+Internet ── 80/443 ── nginx (TLS, single hostname)
+                        ├─ /api/*, /socket.io/*  → api:4000  (NestJS, Socket.IO /rt and /chat)
+                        └─ everything else       → web:3000  (Next.js standalone)
+api, worker ── redis (internal, password, AOF — never published)
+api, worker ── Aurora writer endpoint (schema helpdesk, sslmode=require)
+api, worker ── SES API + S3 bucket (instance role; IMDSv2 hop limit 2)
 ```
 
-The worker runs the same code as the API but starts `backend/worker`, so it scales
-independently of request traffic.
+One hostname means host-only cookies (the refresh cookie is scoped to
+`/api/v1/auth`), no CORS in practice, and websockets on the same origin. Provider
+webhooks arrive at `https://<domain>/api/v1/webhooks/<channel>/<secret>`
+(`PUBLIC_API_URL` = the domain).
 
-## Build
+## Images
+
+| Image | Dockerfile | Build context | Notes |
+|---|---|---|---|
+| `digisoft-api` | `backend/api/Dockerfile` | `backend/` | Also the migrate job: keeps pnpm + a Prisma CLI pinned to the lockfile's `@prisma/client` version |
+| `digisoft-worker` | `backend/worker/Dockerfile` | `backend/` | No HTTP port |
+| `digisoft-web` | `frontend/Dockerfile` | `frontend/` | `output: 'standalone'`; `NEXT_PUBLIC_API_URL` is a **required build arg** |
+
+All three: multi-stage, `pnpm@10.33.0` installed with npm (not corepack),
+`pnpm install --frozen-lockfile`, pruned to production dependencies, run as the
+non-root `node` user with code owned by root (read-only to the app). The api image has
+a `HEALTHCHECK` on `/api/v1/health/live` (falling back to `/api/v1/health`); compose
+uses `/api/v1/health` (checks Postgres + Redis) for readiness.
 
 ```bash
-docker build -f backend/api/Dockerfile   -t digisoft-api    .
-docker build -f backend/worker/Dockerfile -t digisoft-worker .
-docker build -f frontend/Dockerfile   -t digisoft-web    .
+docker build -f backend/api/Dockerfile    -t digisoft-api    backend
+docker build -f backend/worker/Dockerfile -t digisoft-worker backend
+docker build -t digisoft-web --build-arg NEXT_PUBLIC_API_URL=https://desk.example.com/api/v1 \
+  --build-arg NEXT_PUBLIC_SOCKET_URL=https://desk.example.com frontend
 ```
 
-Each Dockerfile takes the repository root as its build context because the apps share
-`packages/`.
+`deploy/docker-compose.prod.yml` builds all three from these contexts.
 
 ## Release order
 
-1. `pnpm db:deploy` (`prisma migrate deploy`) as a one-off job against the production
-   database. Migrations are forward-only; review each one before release.
-2. Roll out the API.
-3. Roll out the worker.
-4. Roll out the frontend.
+1. `bash deploy/scripts/check-migrations.sh` — fails on any migration that would touch
+   something outside schema `helpdesk` (`public.` references, `CREATE EXTENSION`,
+   `search_path`, role/database DDL, GRANT/REVOKE).
+2. `docker compose -f deploy/docker-compose.prod.yml --profile migrate run --rm migrate`
+   — `prisma migrate deploy`, once, as its own step. The API **never** migrates on
+   boot in production (the dev `backend/docker-compose.yml` still does, for convenience).
+3. `up -d` api, worker, web (nginx and certbot stay up).
 
-The API also applies migrations on boot in the Compose file, which is convenient in
-development but should be replaced by the explicit job above in production so two
-starting instances cannot migrate concurrently.
+`deploy/scripts/deploy.sh` does all of this. Migrations are forward-only; review each.
+
+> **Never** run `prisma migrate dev`, `prisma migrate reset`, `prisma db push` or the
+> seed against the shared Aurora database. `reset` drops the schema; `dev`/`push`
+> can generate destructive changes. Only `migrate deploy` is allowed there.
 
 ## Before going live
 
-- [ ] `COOKIE_SECURE=true` and serve everything over HTTPS.
-- [ ] `JWT_SECRET` and `JWT_REFRESH_SECRET` generated per environment (`openssl rand -base64 48`), stored in a secret manager, never in the image.
-- [ ] `FRONTEND_URL` set to the real origin — it is the CORS allowlist.
-- [ ] `DATABASE_URL` uses TLS (`?sslmode=require`) and a least-privilege role.
-- [ ] `EMAIL_PROVIDER` set to `ses` or `smtp`; `console` silently drops mail, so password resets and invitations would never arrive.
-- [ ] Seed credentials changed or the seed never run.
-- [ ] Rate limiting moved to a shared Redis store before running more than one API instance (today's counters are per process — see ENVIRONMENT.md).
-- [ ] Database backups and point-in-time recovery enabled.
-- [ ] Log shipping configured; the API emits structured JSON with credentials redacted.
-- [ ] `/api/v1/health` wired to the load balancer health check.
-- [ ] `STORAGE_LOCAL_PATH` is an absolute path on a volume the API and the worker both
-      mount (or `STORAGE_PROVIDER=s3`) — the two are separate processes with separate
-      working directories, so a relative path resolves to two different places and a
-      report export the worker wrote becomes a 404 when the API tries to serve it.
+- [ ] `deploy/.env` filled from `deploy/.env.example`; no `replace-me` left (`deploy.sh` checks).
+- [ ] `NODE_ENV=production` — the API then **refuses to boot** with `COOKIE_SECURE=false`, localhost URLs, `EMAIL_PROVIDER=console`, a missing `CHANNEL_ENCRYPTION_KEY`, or placeholder/identical JWT secrets.
+- [ ] `DATABASE_URL` has `?schema=helpdesk&sslmode=require&connection_limit=10` and the `helpdesk_app` role (`deploy/sql/01-create-role-and-schema.sql`).
+- [ ] `TRUST_PROXY=1` (nginx is one hop), so `req.ip` and rate limits see the real client.
+- [ ] Instance role attached, IMDSv2 hop limit 2, SES domain verified with DKIM, SES production access granted, S3 bucket private.
+- [ ] `S3_ENDPOINT` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` absent (not empty) so the SDK uses the instance role.
+- [ ] First organization registered, then `ALLOW_PUBLIC_REGISTRATION=false`.
+- [ ] `CHANNEL_ENCRYPTION_KEY` backed up somewhere other than the instance.
+- [ ] Aurora automated backups / PITR confirmed with the database owner.
 
 ## Scaling notes
 
 - Socket.IO uses the Redis adapter, so API instances share rooms and a client can connect to any of them.
 - BullMQ workers are horizontally scalable; queue concurrency is `WORKER_CONCURRENCY` per process.
-- Every tenant-scoped query is indexed on `organizationId` first (see DATABASE.md).
-- Reporting reads daily rollup tables (`TicketDailyMetric` / `AgentDailyMetric`) rather
-  than scanning the ticket table; a report request recomputes the last two days inline
-  if the worker's sweep has fallen behind (§ `PHASE-7-PLAN.md`).
+- Rate-limit counters are per API process; move them to Redis before running more than one API instance.
+- Beyond one host: ElastiCache for Redis, an ALB in front (keep `TRUST_PROXY` equal to the number of proxy hops), S3 already shared.
+- Reporting reads daily rollup tables rather than scanning tickets (see `PHASE-7-PLAN.md`).

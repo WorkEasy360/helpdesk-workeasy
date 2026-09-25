@@ -76,6 +76,12 @@ export interface ChannelProvider {
   readonly type: ChannelType;
   /** Meta-style GET verification; return the echo string when the challenge is valid. */
   challenge?(query: Record<string, string | undefined>, secrets: ChannelSecrets): string | null;
+  /**
+   * False when the provider supports its own request authentication (signature, secret
+   * header, basic credentials) but the channel has none configured, leaving the webhook
+   * URL secret as the only credential. Omitted when verification is always enforced.
+   */
+  hasProviderAuth?(secrets: ChannelSecrets): boolean;
   /** Signature/secret check over the raw body. Returning false means 401 at the edge. */
   verify(input: VerifyInput, secrets: ChannelSecrets): boolean;
   parse(payload: unknown, context: ParseContext): InboundMessage[];

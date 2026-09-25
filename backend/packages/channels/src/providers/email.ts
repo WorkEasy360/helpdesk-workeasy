@@ -156,6 +156,45 @@ function str(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function parseJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Fields of a request body that may be JSON or form-encoded. Mailgun routes post
+ * `application/x-www-form-urlencoded` (or multipart, which the edge flattens to the same
+ * urlencoded shape before verification), so the raw bytes are not always JSON.
+ */
+function bodyFields(input: VerifyInput): Record<string, unknown> {
+  const type = input.headers['content-type']?.toLowerCase() ?? '';
+  if (!type.includes('application/x-www-form-urlencoded')) {
+    const parsed = parseJson(input.rawBody);
+    if (parsed && typeof parsed === 'object') {
+      return record(parsed);
+    }
+  }
+  return Object.fromEntries(new URLSearchParams(input.rawBody).entries());
+}
+
+/** Mailgun's `message-headers`: a JSON list of `[name, value]` pairs. */
+function headerPairs(value: unknown): Record<string, string | undefined> {
+  const list = typeof value === 'string' ? parseJson(value) : value;
+  const out: Record<string, string | undefined> = {};
+  if (!Array.isArray(list)) {
+    return out;
+  }
+  for (const pair of list) {
+    if (Array.isArray(pair) && typeof pair[0] === 'string' && typeof pair[1] === 'string') {
+      out[pair[0].toLowerCase()] ??= pair[1];
+    }
+  }
+  return out;
+}
+
 function lowerKeys(value: unknown): Record<string, string | undefined> {
   const source = record(value);
   const out: Record<string, string | undefined> = {};
@@ -168,17 +207,20 @@ function lowerKeys(value: unknown): Record<string, string | undefined> {
 }
 
 function attachmentsFrom(value: unknown): InboundAttachment[] {
-  if (!Array.isArray(value)) {
+  // Form-encoded posts (Mailgun) carry structured fields as JSON strings.
+  const list = typeof value === 'string' ? parseJson(value) : value;
+  if (!Array.isArray(list)) {
     return [];
   }
   const attachments: InboundAttachment[] = [];
-  for (const entry of value) {
+  for (const entry of list) {
     const item = record(entry);
     const fileName = str(item['fileName']) ?? str(item['name']) ?? str(item['Name']);
     const mimeType =
       str(item['mimeType']) ??
       str(item['contentType']) ??
       str(item['ContentType']) ??
+      str(item['content-type']) ??
       'application/octet-stream';
     const contentBase64 = str(item['contentBase64']) ?? str(item['content']) ?? str(item['Content']);
     const url = str(item['url']);
@@ -199,10 +241,15 @@ export const genericEmailProvider: ChannelProvider = {
   key: 'generic',
   type: 'EMAIL',
 
+  hasProviderAuth(secrets: ChannelSecrets): boolean {
+    return Boolean(secrets['signingSecret']);
+  },
+
   verify(input: VerifyInput, secrets: ChannelSecrets): boolean {
     const signingSecret = secrets['signingSecret'];
     if (!signingSecret) {
-      // No secret configured: the unguessable webhook URL is the only credential.
+      // No secret configured: the unguessable webhook URL is the only credential. The
+      // edge logs a warning for channels left in this state.
       return true;
     }
     const signature = input.headers['x-digisoft-signature'];
@@ -234,22 +281,24 @@ export const genericEmailProvider: ChannelProvider = {
   },
 };
 
-/** Mailgun "Routes → store and notify" payloads, verified with the signing key. */
+/**
+ * Mailgun routes ("forward" and "store and notify"), verified with the signing key.
+ * Mailgun posts form fields — urlencoded, or multipart when the message has files — and
+ * signs `timestamp + token` rather than the body, so verification only needs the three
+ * signature fields wherever they appear. JSON bodies are accepted too.
+ */
 export const mailgunEmailProvider: ChannelProvider = {
   key: 'mailgun',
   type: 'EMAIL',
+
+  hasProviderAuth: () => true,
 
   verify(input: VerifyInput, secrets: ChannelSecrets): boolean {
     const signingKey = secrets['signingKey'];
     if (!signingKey) {
       return false;
     }
-    let body: Record<string, unknown>;
-    try {
-      body = record(JSON.parse(input.rawBody));
-    } catch {
-      return false;
-    }
+    const body = bodyFields(input);
     const signature = record(body['signature']);
     const timestamp = str(signature['timestamp']) ?? str(body['timestamp']);
     const token = str(signature['token']) ?? str(body['token']);
@@ -269,7 +318,10 @@ export const mailgunEmailProvider: ChannelProvider = {
   parse(payload: unknown, context: ParseContext): InboundMessage[] {
     const body = record(payload);
     const message = record(body['message-headers'] ? body : body['event-data']);
-    const headers = lowerKeys(body['headers'] ?? message['headers']);
+    const headers = {
+      ...headerPairs(body['message-headers']),
+      ...lowerKeys(body['headers'] ?? message['headers']),
+    };
     return toInboundMessage(
       {
         messageId: str(body['Message-Id']) ?? str(body['message-id']) ?? headers['message-id'],
@@ -294,10 +346,15 @@ export const postmarkEmailProvider: ChannelProvider = {
   key: 'postmark',
   type: 'EMAIL',
 
+  hasProviderAuth(secrets: ChannelSecrets): boolean {
+    return Boolean(secrets['webhookUsername'] || secrets['webhookPassword']);
+  },
+
   verify(input: VerifyInput, secrets: ChannelSecrets): boolean {
     const user = secrets['webhookUsername'];
     const password = secrets['webhookPassword'];
     if (!user && !password) {
+      // Basic credentials not configured: the webhook URL secret is the only guard.
       return true;
     }
     const header = input.headers['authorization'];

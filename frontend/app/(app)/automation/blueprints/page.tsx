@@ -12,6 +12,7 @@ import { rolesService } from '@/services/settings.service';
 import { useAuthStore } from '@/stores/auth.store';
 import type { Blueprint, ConditionTreeDto } from '@/types/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Input, Select } from '@/components/ui/input';
 import { Field } from '@/components/ui/form';
 import { Badge } from '@/components/ui/badge';
@@ -137,6 +138,7 @@ function BlueprintDialog({ open, onOpenChange, blueprint }: { open: boolean; onO
 
 export default function BlueprintsPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const can = useAuthStore((state) => state.can);
   const manage = can(PERMISSIONS.OPERATIONS_MANAGE);
   const [dialog, setDialog] = useState<{ open: boolean; blueprint: Blueprint | null }>({ open: false, blueprint: null });
@@ -167,7 +169,7 @@ export default function BlueprintsPage() {
                   {manage ? (
                     <div className="flex gap-1">
                       <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setDialog({ open: true, blueprint: bp })}><Pencil className="h-4 w-4" aria-hidden /></Button>
-                      <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => window.confirm(`Delete "${bp.name}"?`) && remove.mutate(bp.id)}><Trash2 className="h-4 w-4" aria-hidden /></Button>
+                      <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => void confirm({ title: `Delete "${bp.name}"?`, confirmLabel: 'Delete', onConfirm: () => remove.mutateAsync(bp.id) })}><Trash2 className="h-4 w-4" aria-hidden /></Button>
                     </div>
                   ) : null}
                 </div>

@@ -12,6 +12,7 @@ import { organizationService } from '@/services/settings.service';
 import { useAuthStore } from '@/stores/auth.store';
 import type { ConditionTreeDto, SlaPolicy } from '@/types/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Input, Select } from '@/components/ui/input';
 import { Field } from '@/components/ui/form';
 import { Badge } from '@/components/ui/badge';
@@ -143,6 +144,7 @@ function PolicyDialog({ open, onOpenChange, policy }: { open: boolean; onOpenCha
 
 export default function SlaPoliciesPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const can = useAuthStore((state) => state.can);
   const manage = can(PERMISSIONS.OPERATIONS_MANAGE);
   const [dialog, setDialog] = useState<{ open: boolean; policy: SlaPolicy | null }>({ open: false, policy: null });
@@ -173,7 +175,7 @@ export default function SlaPoliciesPage() {
                   {manage ? (
                     <div className="flex gap-1">
                       <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setDialog({ open: true, policy })}><Pencil className="h-4 w-4" aria-hidden /></Button>
-                      <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => window.confirm(`Delete "${policy.name}"?`) && remove.mutate(policy.id)}><Trash2 className="h-4 w-4" aria-hidden /></Button>
+                      <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => void confirm({ title: `Delete "${policy.name}"?`, confirmLabel: 'Delete', onConfirm: () => remove.mutateAsync(policy.id) })}><Trash2 className="h-4 w-4" aria-hidden /></Button>
                     </div>
                   ) : null}
                 </div>

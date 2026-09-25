@@ -1,2 +1,26 @@
+# Build context for frontend/Dockerfile (context: frontend/).
 node_modules
 .next
+out
+coverage
+*.tsbuildinfo
+
+# Secrets. NEXT_PUBLIC_* values arrive as build args, never from a copied .env file.
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+.DS_Store
+*.log
+
+# Not needed to build or run
+docs
+e2e
+test-results
+playwright-report
+playwright.config.ts
+storage
+Dockerfile
+.dockerignore

@@ -204,10 +204,15 @@ export class AttachmentsService {
     }
   }
 
-  /** Strips directories and control characters so the stored name is safe to echo back. */
+  /**
+   * Strips directories and control characters so the stored name is safe to echo back.
+   * Both `/` and `\` count as separators whatever the host OS: `path.basename` only
+   * knows the platform's own, which made the result differ between Linux and Windows.
+   */
   static sanitiseFileName(name: string): string {
-    const base = path.basename(name).replace(/[\x00-\x1f\x7f]/g, '');
-    const cleaned = base.replace(/[\\/:*?"<>|]/g, '_').trim();
-    return (cleaned.length > 0 ? cleaned : 'file').slice(0, 200);
+    const base = (name.split(/[\\/]/).pop() ?? '').replace(/[\x00-\x1f\x7f]/g, '');
+    const cleaned = base.replace(/[:*?"<>|]/g, '_').trim();
+    const usable = cleaned.length > 0 && cleaned !== '.' && cleaned !== '..';
+    return (usable ? cleaned : 'file').slice(0, 200);
   }
 }

@@ -1,20 +1,28 @@
-'use client';
+import type { Metadata } from 'next';
+import { HelpCenterLayout } from '@/components/portal/help-center-layout';
+import { fetchPortalConfig } from '@/lib/server-api';
 
-import { use } from 'react';
-import { PortalSessionProvider } from '@/components/portal/portal-session';
-import { PortalShell } from '@/components/portal/portal-shell';
+type Params = Promise<{ slug: string }>;
 
-export default function HelpCenterLayout({
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { slug } = await params;
+  const config = await fetchPortalConfig(slug);
+  const name = config?.name ?? 'Help center';
+  return {
+    // `absolute` so the help center carries the customer's brand, not ours.
+    title: { absolute: name, template: `%s · ${name}` },
+    description: config?.tagline ?? `Support articles and help from ${name}.`,
+    ...(config?.logoUrl ? { icons: { icon: config.logoUrl } } : {}),
+  };
+}
+
+export default async function HelpCenterRootLayout({
   children,
   params,
 }: {
   children: React.ReactNode;
-  params: Promise<{ slug: string }>;
+  params: Params;
 }) {
-  const { slug } = use(params);
-  return (
-    <PortalSessionProvider slug={slug}>
-      <PortalShell slug={slug}>{children}</PortalShell>
-    </PortalSessionProvider>
-  );
+  const { slug } = await params;
+  return <HelpCenterLayout slug={slug}>{children}</HelpCenterLayout>;
 }

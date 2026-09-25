@@ -12,9 +12,9 @@ export const chatService = {
 };
 
 /**
- * Visitor side. The session token is held in memory by the widget and sent as a header;
- * it is the only credential a visitor has, and it is never written to storage the page
- * shares with anything else.
+ * Visitor side. The session token is sent as a header; it is the only credential a
+ * visitor has. The widget keeps it in per-tab sessionStorage so a reload can resume the
+ * conversation, and drops it as soon as the chat ends.
  */
 export const chatWidgetService = (slug: string) => {
   const base = `/portal/${slug}/chat`;

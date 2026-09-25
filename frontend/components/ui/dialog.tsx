@@ -18,7 +18,7 @@ export const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-1/2 top-1/2 z-50 grid w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border bg-background p-5 shadow-lg',
+        'fixed left-1/2 top-1/2 z-50 grid max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain rounded-lg border border-border bg-background p-4 text-foreground shadow-lg sm:w-[calc(100vw-2rem)] sm:p-5',
         className,
       )}
       {...props}
@@ -60,5 +60,5 @@ export const DialogDescription = React.forwardRef<
 DialogDescription.displayName = 'DialogDescription';
 
 export function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex justify-end gap-2 pt-2', className)} {...props} />;
+  return <div className={cn('flex flex-wrap justify-end gap-2 pt-2', className)} {...props} />;
 }

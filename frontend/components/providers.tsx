@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { ApiError, onSessionExpired } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth.store';
+import { ConfirmProvider } from '@/components/ui/confirm-dialog';
+import { ThemeProvider, useTheme } from '@/components/theme-provider';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const clear = useAuthStore((state) => state.clear);
@@ -40,9 +42,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }, [clear, queryClient]);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {children}
-      <Toaster position="top-right" richColors closeButton />
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <ConfirmProvider>{children}</ConfirmProvider>
+        <ThemedToaster />
+      </QueryClientProvider>
+    </ThemeProvider>
   );
+}
+
+function ThemedToaster() {
+  const { resolvedTheme } = useTheme();
+  return <Toaster position="top-right" richColors closeButton theme={resolvedTheme} />;
 }

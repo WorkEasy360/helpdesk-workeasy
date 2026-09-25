@@ -1,6 +1,8 @@
 import {
   assignTicketSchema,
+  bulkUpdateTicketsSchema,
   createTicketSchema,
+  listTicketsQuerySchema,
   updateTicketSchema,
 } from '@digisoft/shared';
 
@@ -59,6 +61,44 @@ describe('ticket payload schemas', () => {
     it('requires a subject and a description', () => {
       expect(createTicketSchema.safeParse({ subject: '', description: 'x' }).success).toBe(false);
       expect(createTicketSchema.safeParse({ subject: 'x' }).success).toBe(false);
+    });
+  });
+
+  describe('bulkUpdateTicketsSchema', () => {
+    it('checks the payload against the chosen action', () => {
+      expect(
+        bulkUpdateTicketsSchema.safeParse({ ticketIds: ['a'], action: 'priority', payload: { priorityId: 'p' } })
+          .success,
+      ).toBe(true);
+      expect(bulkUpdateTicketsSchema.safeParse({ ticketIds: ['a'], action: 'priority' }).success).toBe(false);
+      expect(bulkUpdateTicketsSchema.safeParse({ ticketIds: ['a'], action: 'close' }).success).toBe(true);
+      expect(
+        bulkUpdateTicketsSchema.safeParse({ ticketIds: ['a'], action: 'assign', payload: {} }).success,
+      ).toBe(false);
+    });
+
+    it('caps a request at 100 tickets', () => {
+      const ids = (n: number) => Array.from({ length: n }, (_, i) => `t${i}`);
+      expect(bulkUpdateTicketsSchema.safeParse({ ticketIds: ids(100), action: 'close' }).success).toBe(true);
+      expect(bulkUpdateTicketsSchema.safeParse({ ticketIds: ids(101), action: 'close' }).success).toBe(false);
+      expect(bulkUpdateTicketsSchema.safeParse({ ticketIds: [], action: 'close' }).success).toBe(false);
+    });
+  });
+
+  describe('listTicketsQuerySchema', () => {
+    it('accepts dates and ISO timestamps for the creation window', () => {
+      expect(listTicketsQuerySchema.parse({ createdFrom: '2026-01-01' }).createdFrom).toBe('2026-01-01');
+      expect(listTicketsQuerySchema.safeParse({ createdTo: '2026-01-01T10:00:00Z' }).success).toBe(true);
+      expect(listTicketsQuerySchema.safeParse({ createdTo: '2026-01-01T10:00:00+05:30' }).success).toBe(true);
+      expect(listTicketsQuerySchema.safeParse({ createdFrom: 'yesterday' }).success).toBe(false);
+    });
+
+    it('parses overdue and statusCategory', () => {
+      expect(listTicketsQuerySchema.parse({ overdue: 'false', statusCategory: 'closed' })).toMatchObject({
+        overdue: false,
+        statusCategory: 'closed',
+      });
+      expect(listTicketsQuerySchema.safeParse({ statusCategory: 'pending' }).success).toBe(false);
     });
   });
 });

@@ -231,6 +231,79 @@ describe('Customer portal (e2e)', () => {
       .expect(409);
   });
 
+  describe('refresh cookies', () => {
+    const cookieNamed = (response: request.Response, name: string): string | undefined =>
+      ((response.headers['set-cookie'] as unknown as string[] | undefined) ?? []).find((cookie) =>
+        cookie.startsWith(`${name}=`),
+      );
+    const asCookieHeader = (setCookie: string, name?: string): string => {
+      const pair = setCookie.split(';')[0]!;
+      return name ? `${name}=${pair.slice(pair.indexOf('=') + 1)}` : pair;
+    };
+
+    it('keeps the portal session in its own cookie, scoped to this help center', async () => {
+      const registered = await request(http)
+        .post(portal('/auth/register'))
+        .send({ firstName: 'Rhea', email: 'rhea@example.com', password: 'PortalPass123' })
+        .expect(201);
+
+      const cookie = cookieNamed(registered, 'ds_portal_refresh');
+      expect(cookie).toBeDefined();
+      expect(cookie).toContain('HttpOnly');
+      expect(cookie).toContain(`Path=/api/v1/portal/${slug}/auth`);
+      // Never the agent cookie, so an agent session in the same browser survives.
+      expect(cookieNamed(registered, 'ds_refresh')).toBeUndefined();
+
+      const refreshed = await request(http)
+        .post(portal('/auth/refresh'))
+        .set('Cookie', asCookieHeader(cookie!))
+        .expect(200);
+      expect(refreshed.body.data.user.email).toBe('rhea@example.com');
+      const rotated = cookieNamed(refreshed, 'ds_portal_refresh');
+      expect(rotated).toBeDefined();
+      expect(rotated).not.toEqual(cookie);
+
+      // The agent endpoint only reads the agent cookie.
+      await request(http).post(apiPath('/auth/refresh')).set('Cookie', asCookieHeader(rotated!)).expect(401);
+
+      await request(http).post(portal('/auth/logout')).set('Cookie', asCookieHeader(rotated!)).expect(200);
+      await request(http).post(portal('/auth/refresh')).set('Cookie', asCookieHeader(rotated!)).expect(401);
+    });
+
+    it('never renews an agent session or a customer of another help center at the portal', async () => {
+      const agentLogin = await request(http)
+        .post(apiPath('/auth/login'))
+        .send({ email: 'owner@portal.example', password: 'Str0ngPassword1', organizationSlug: 'portal' })
+        .expect(200);
+      const agentCookie = cookieNamed(agentLogin, 'ds_refresh')!;
+      const agentAsPortal = await request(http)
+        .post(portal('/auth/refresh'))
+        .set('Cookie', asCookieHeader(agentCookie, 'ds_portal_refresh'))
+        .expect(401);
+      expect(agentAsPortal.headers['set-cookie']).toBeUndefined();
+      // Presented at the wrong door, not revoked: the agent can still refresh normally.
+      await request(http).post(apiPath('/auth/refresh')).set('Cookie', asCookieHeader(agentCookie)).expect(200);
+
+      const other = await registerOrg(http, 'portal-other');
+      const otherHelpCenter = await request(http)
+        .get(apiPath('/help-center'))
+        .set({ Authorization: `Bearer ${other.token}` })
+        .expect(200);
+      const otherSlug = otherHelpCenter.body.data.slug as string;
+      const otherCustomer = await request(http)
+        .post(apiPath(`/portal/${otherSlug}/auth/register`))
+        .send({ firstName: 'Omar', email: 'omar@example.com', password: 'PortalPass123' })
+        .expect(201);
+      const otherCookie = cookieNamed(otherCustomer, 'ds_portal_refresh')!;
+
+      await request(http).post(portal('/auth/refresh')).set('Cookie', asCookieHeader(otherCookie)).expect(401);
+      await request(http)
+        .post(apiPath(`/portal/${otherSlug}/auth/refresh`))
+        .set('Cookie', asCookieHeader(otherCookie))
+        .expect(200);
+    });
+  });
+
   it('refuses sign-up when the help center does not allow it', async () => {
     await request(http).patch(apiPath('/help-center')).set(auth).send({ allowSelfRegistration: false }).expect(200);
     await request(http)

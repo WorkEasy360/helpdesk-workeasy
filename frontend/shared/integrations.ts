@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './pagination';
-import { optionalField } from './field';
+import { optionalField, patchSchema } from './field';
+import { isPublicHttpUrl } from './network';
 
 /**
  * Events an outbound webhook can subscribe to. The names match the audit actions, so
@@ -22,9 +23,18 @@ export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 export const webhookEndpointSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  url: z.string().url().max(500).refine((value) => value.startsWith('https://') || value.startsWith('http://'), {
-    message: 'Use an http(s) URL',
-  }),
+  url: z
+    .string()
+    .url()
+    .max(500)
+    .refine((value) => value.startsWith('https://') || value.startsWith('http://'), {
+      message: 'Use an http(s) URL',
+    })
+    // Obvious internal targets are refused here; the delivery worker re-checks the
+    // resolved address on every attempt, which is the check that actually matters.
+    .refine((value) => isPublicHttpUrl(value), {
+      message: 'Webhook URLs must point at a public host',
+    }),
   /** Empty means every event. */
   events: z.array(z.enum(WEBHOOK_EVENTS)).max(WEBHOOK_EVENTS.length).default([]),
   isActive: z.boolean().default(true),
@@ -32,7 +42,7 @@ export const webhookEndpointSchema = z.object({
 export type WebhookEndpointInput = z.infer<typeof webhookEndpointSchema>;
 export type WebhookEndpointFormValues = z.input<typeof webhookEndpointSchema>;
 
-export const updateWebhookEndpointSchema = webhookEndpointSchema.partial();
+export const updateWebhookEndpointSchema = patchSchema(webhookEndpointSchema);
 export type UpdateWebhookEndpointInput = z.infer<typeof updateWebhookEndpointSchema>;
 
 export const listWebhookDeliveriesQuerySchema = paginationQuerySchema.extend({

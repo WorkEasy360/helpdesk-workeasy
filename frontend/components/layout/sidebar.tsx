@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -54,6 +55,56 @@ export function Sidebar() {
   const setSidebarOpen = useUiStore((state) => state.setSidebarOpen);
 
   const items = NAV.filter((item) => !item.permission || can(item.permission));
+  const asideRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+
+  // Mobile drawer behaviour: Escape closes, focus moves in on open, stays inside while
+  // open, and returns to the menu button on close. Desktop never sets `sidebarOpen`
+  // from the trigger (it is hidden at lg), so none of this runs there.
+  useEffect(() => {
+    if (!sidebarOpen) {
+      if (wasOpen.current) {
+        wasOpen.current = false;
+        const active = document.activeElement;
+        if (!active || active === document.body || asideRef.current?.contains(active)) {
+          document.getElementById('sidebar-trigger')?.focus();
+        }
+      }
+      return;
+    }
+    const desktop = window.matchMedia('(min-width: 1024px)').matches;
+    if (desktop) return;
+    wasOpen.current = true;
+    closeRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setSidebarOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !asideRef.current) return;
+      const focusable = asideRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (!asideRef.current.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [sidebarOpen, setSidebarOpen]);
 
   return (
     <>
@@ -66,9 +117,14 @@ export function Sidebar() {
       ) : null}
 
       <aside
+        id="app-sidebar"
+        ref={asideRef}
+        aria-label="Navigation"
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-border bg-card transition-transform lg:static lg:translate-x-0',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+          'fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-border bg-card transition-[transform,visibility] lg:visible lg:static lg:translate-x-0',
+          // Below lg a closed drawer is also `invisible`, which removes it from the tab
+          // order and the accessibility tree instead of leaving it merely off-screen.
+          sidebarOpen ? 'visible translate-x-0' : 'invisible -translate-x-full',
         )}
       >
         <div className="flex h-14 items-center justify-between border-b border-border px-4">
@@ -76,6 +132,7 @@ export function Sidebar() {
             Digisoft360 Help Desk
           </Link>
           <Button
+            ref={closeRef}
             variant="ghost"
             size="icon"
             className="lg:hidden"
@@ -110,9 +167,11 @@ export function Sidebar() {
           })}
         </nav>
 
-        <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
-          Phases 1–7 · helpdesk, operations, self-service, omnichannel, assistant, analytics
-        </p>
+        {process.env.NEXT_PUBLIC_APP_VERSION ? (
+          <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
+            Version {process.env.NEXT_PUBLIC_APP_VERSION}
+          </p>
+        ) : null}
       </aside>
     </>
   );

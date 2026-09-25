@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { paginationQuerySchema } from './pagination';
-import { optionalField, queryBoolean } from './field';
+import { optionalField, queryBoolean, patchSchema } from './field';
 import { slugSchema } from './slug';
 
 export const CONTENT_VISIBILITIES = ['PUBLIC', 'PORTAL_USERS', 'AGENTS_ONLY'] as const;
@@ -22,7 +22,7 @@ export const kbCategorySchema = z.object({
 export type KbCategoryInput = z.infer<typeof kbCategorySchema>;
 export type KbCategoryFormValues = z.input<typeof kbCategorySchema>;
 
-export const updateKbCategorySchema = kbCategorySchema.partial();
+export const updateKbCategorySchema = patchSchema(kbCategorySchema);
 export type UpdateKbCategoryInput = z.infer<typeof updateKbCategorySchema>;
 
 export const kbArticleSchema = z.object({
@@ -42,7 +42,7 @@ export const kbArticleSchema = z.object({
 export type KbArticleInput = z.infer<typeof kbArticleSchema>;
 export type KbArticleFormValues = z.input<typeof kbArticleSchema>;
 
-export const updateKbArticleSchema = kbArticleSchema.partial();
+export const updateKbArticleSchema = patchSchema(kbArticleSchema);
 export type UpdateKbArticleInput = z.infer<typeof updateKbArticleSchema>;
 
 export const listKbArticlesQuerySchema = paginationQuerySchema.extend({

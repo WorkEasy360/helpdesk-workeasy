@@ -11,6 +11,7 @@ import { kbService } from '@/services/kb.service';
 import { formatDateTime } from '@/lib/utils';
 import type { KbArticle } from '@/types/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field } from '@/components/ui/form';
@@ -70,6 +71,7 @@ function toDraft(article: KbArticle): Draft {
 export function ArticleEditor({ id }: { id: string | null }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [draft, setDraft] = useState<Draft | null>(id ? null : emptyDraft);
   const [preview, setPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -301,7 +303,15 @@ export function ArticleEditor({ id }: { id: string | null }) {
                 </Button>
               ) : null}
               {id ? (
-                <Button type="button" variant="ghost" className="w-full" onClick={() => remove.mutate()}>
+                <Button type="button" variant="ghost" className="w-full" onClick={() =>
+                    void confirm({
+                      title: 'Delete this article?',
+                      description: 'It will be removed from the knowledge base and the help center.',
+                      confirmLabel: 'Delete article',
+                      onConfirm: () => remove.mutateAsync(),
+                    })
+                  }
+                >
                   <Trash2 className="h-4 w-4" aria-hidden />
                   Delete article
                 </Button>

@@ -76,6 +76,34 @@ describe('Attachments (e2e)', () => {
     expect(download.headers['x-content-type-options']).toBe('nosniff');
   });
 
+  it('answers with a link instead of the bytes when asked for JSON', async () => {
+    const uploaded = await upload('notes.txt', 'text/plain', 'hello world').expect(201);
+    const path = apiPath(`/attachments/${uploaded.body.data.id}/download`);
+
+    const byQuery = await request(http).get(path).query({ mode: 'url' }).set(auth).expect(200);
+    // Local storage has nothing to sign: the link is the authenticated streaming route.
+    expect(byQuery.body.data).toEqual({
+      url: path,
+      fileName: 'notes.txt',
+      mimeType: 'text/plain',
+      fileSize: 11,
+      expiresAt: null,
+      direct: false,
+    });
+    expect(byQuery.headers['cache-control']).toBe('no-store');
+
+    const byAccept = await request(http).get(path).set(auth).set('Accept', 'application/json').expect(200);
+    expect(byAccept.body.data.url).toBe(path);
+
+    // The link is still authorised like the download itself.
+    const intruder = await registerOrg(http, 'link-nosy');
+    await request(http)
+      .get(path)
+      .query({ mode: 'url' })
+      .set({ Authorization: `Bearer ${intruder.token}` })
+      .expect(404);
+  });
+
   it('refuses a file type that is not on the allowlist', async () => {
     const response = await upload('payload.exe', 'application/x-msdownload', 'MZ').expect(415);
     expect(response.body.error.code).toBe('UNSUPPORTED_MEDIA_TYPE');
