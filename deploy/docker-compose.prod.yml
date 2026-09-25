@@ -81,6 +81,8 @@ services:
     environment:
       <<: *backend-env
     expose: ['4000']
+    # Used when STORAGE_PROVIDER=local (single host); unused with s3.
+    volumes: ['file-storage:/var/lib/digisoft/storage']
     depends_on:
       redis: { condition: service_healthy }
     # Readiness: /health reports degraded (and, once the hardening pass lands, 503s)
@@ -106,6 +108,8 @@ services:
     env_file: *app-env-file
     environment:
       <<: *backend-env
+    # Same volume as the api: the worker writes report exports the api serves.
+    volumes: ['file-storage:/var/lib/digisoft/storage']
     depends_on:
       redis: { condition: service_healthy }
     logging: *logging
@@ -173,5 +177,6 @@ services:
 
 volumes:
   redis-data:
+  file-storage:
   certbot-conf:
   certbot-www:

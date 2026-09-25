@@ -18,10 +18,13 @@ compose=(docker compose -f docker-compose.prod.yml)
 env_get() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'; }
 DOMAIN="$(env_get DOMAIN)"
 EMAIL="$(env_get LETSENCRYPT_EMAIL)"
-if [ -z "$DOMAIN" ] || [ -z "$EMAIL" ]; then
-  echo "init-letsencrypt: set DOMAIN and LETSENCRYPT_EMAIL in deploy/.env" >&2
+if [ -z "$DOMAIN" ]; then
+  echo "init-letsencrypt: set DOMAIN in deploy/.env" >&2
   exit 1
 fi
+# An email is strongly recommended (expiry and revocation notices); without one the
+# account is registered anonymously.
+if [ -n "$EMAIL" ]; then email_args=(--email "$EMAIL"); else email_args=(--register-unsafely-without-email); fi
 
 live="/etc/letsencrypt/live/$DOMAIN"
 if "${compose[@]}" run --rm --no-deps --entrypoint sh certbot -c "test -f $live/fullchain.pem && ! test -f $live/.dummy" 2>/dev/null; then
@@ -54,7 +57,7 @@ staging=()
   certonly --webroot -w /var/www/certbot \
   "${staging[@]}" \
   -d "$DOMAIN" \
-  --email "$EMAIL" --agree-tos --no-eff-email \
+  "${email_args[@]}" --agree-tos --no-eff-email \
   --rsa-key-size 4096 --non-interactive --force-renewal
 
 echo "==> Reloading nginx"
