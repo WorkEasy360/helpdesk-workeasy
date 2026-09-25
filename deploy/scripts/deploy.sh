@@ -42,10 +42,22 @@ echo "==> Release ${IMAGE_TAG:-latest}"
 
 # --- build ---------------------------------------------------------------------
 # Sequential builds keep peak memory within a small instance (+ swap).
-for svc in api worker web; do
-  echo "==> Building $svc"
-  "${compose[@]}" build "$svc"
-done
+# SKIP_BUILD=1 uses images already loaded on the host (built elsewhere and shipped
+# with `docker save | ssh ... docker load`), for instances too small to build.
+if [ "${SKIP_BUILD:-0}" != "1" ]; then
+  for svc in api worker web; do
+    echo "==> Building $svc"
+    "${compose[@]}" build "$svc"
+  done
+else
+  for img in api worker web; do
+    docker image inspect "digisoft-$img:${IMAGE_TAG:-latest}" >/dev/null 2>&1 || {
+      echo "deploy: SKIP_BUILD=1 but digisoft-$img:${IMAGE_TAG:-latest} is not loaded" >&2
+      exit 1
+    }
+  done
+  echo "==> SKIP_BUILD=1 — using preloaded images"
+fi
 
 # --- migrate -------------------------------------------------------------------
 if [ "${SKIP_MIGRATE:-0}" != "1" ]; then
