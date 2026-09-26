@@ -1,0 +1,133 @@
+# Build the three images on GitHub, push them to GHCR, then roll them out on the EC2
+# host over SSH. The host never builds (it is too small) and never holds source code:
+# it receives only deploy/ and the Prisma migrations, and keeps its own deploy/.env.
+#
+# Repository settings this needs (see deploy/README.md, "Deploying from GitHub"):
+#   secrets:   EC2_HOST, EC2_USER, EC2_SSH_KEY
+#   variables: DOMAIN  (public hostname, baked into the web bundle and its CSP)
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One rollout at a time; a newer push waits rather than interrupting a migration.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: api
+            context: backend
+            file: backend/api/Dockerfile
+          - name: worker
+            context: backend
+            file: backend/worker/Dockerfile
+          - name: web
+            context: frontend
+            file: frontend/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check configuration
+        if: matrix.name == 'web' && vars.DOMAIN == ''
+        run: |
+          echo "::error::Set the repository variable DOMAIN (Settings → Secrets and variables → Actions → Variables)"
+          exit 1
+
+      - name: Image name
+        id: image
+        # GHCR requires lowercase; the organization name may not be.
+        run: echo "prefix=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/helpdesk" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: |
+            ${{ steps.image.outputs.prefix }}-${{ matrix.name }}:${{ github.sha }}
+            ${{ steps.image.outputs.prefix }}-${{ matrix.name }}:latest
+          # Links the package to this repository, so the workflow token can pull it.
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://${{ vars.DOMAIN }}/api/v1
+            NEXT_PUBLIC_SOCKET_URL=https://${{ vars.DOMAIN }}
+            NEXT_PUBLIC_APP_VERSION=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 20 -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts || { echo "::error::Could not reach $EC2_HOST on port 22"; exit 1; }
+
+      - name: Ship deploy files and migrations
+        env:
+          TARGET: ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}
+        # deploy/.env is not in the repository, so the host's copy is never overwritten.
+        run: |
+          tar -czf - deploy backend/packages/db/prisma/migrations \
+            | ssh -i ~/.ssh/deploy_key "$TARGET" 'mkdir -p ~/helpdesk && tar -xzf - -C ~/helpdesk'
+
+      - name: Roll out
+        env:
+          TARGET: ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        # The short-lived workflow token lets the host pull the private images; it is
+        # removed again when the rollout ends.
+        run: |
+          prefix="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/helpdesk"
+          printf '%s' "$TOKEN" | ssh -i ~/.ssh/deploy_key "$TARGET" "docker login ghcr.io -u '$ACTOR' --password-stdin"
+          status=0
+          ssh -i ~/.ssh/deploy_key "$TARGET" \
+            "cd ~/helpdesk/deploy && PULL=1 IMAGE_PREFIX='$prefix' IMAGE_TAG='${GITHUB_SHA}' bash scripts/deploy.sh" || status=$?
+          ssh -i ~/.ssh/deploy_key "$TARGET" 'docker logout ghcr.io >/dev/null' || true
+          exit $status
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS "https://${{ vars.DOMAIN }}/api/v1/health" && curl -fsS -o /dev/null "https://${{ vars.DOMAIN }}/login"; then
+              echo; echo "Live: https://${{ vars.DOMAIN }}"; exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::Site did not answer after the rollout"; exit 1

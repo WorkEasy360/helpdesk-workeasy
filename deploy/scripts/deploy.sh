@@ -44,15 +44,19 @@ echo "==> Release ${IMAGE_TAG:-latest}"
 # Sequential builds keep peak memory within a small instance (+ swap).
 # SKIP_BUILD=1 uses images already loaded on the host (built elsewhere and shipped
 # with `docker save | ssh ... docker load`), for instances too small to build.
-if [ "${SKIP_BUILD:-0}" != "1" ]; then
+# PULL=1 pulls them from the registry in IMAGE_PREFIX (the GitHub Actions deploy).
+if [ "${PULL:-0}" = "1" ]; then
+  echo "==> Pulling ${IMAGE_PREFIX:-digisoft}-{api,worker,web}:${IMAGE_TAG:-latest}"
+  "${compose[@]}" pull api worker web
+elif [ "${SKIP_BUILD:-0}" != "1" ]; then
   for svc in api worker web; do
     echo "==> Building $svc"
     "${compose[@]}" build "$svc"
   done
 else
   for img in api worker web; do
-    docker image inspect "digisoft-$img:${IMAGE_TAG:-latest}" >/dev/null 2>&1 || {
-      echo "deploy: SKIP_BUILD=1 but digisoft-$img:${IMAGE_TAG:-latest} is not loaded" >&2
+    docker image inspect "${IMAGE_PREFIX:-digisoft}-$img:${IMAGE_TAG:-latest}" >/dev/null 2>&1 || {
+      echo "deploy: SKIP_BUILD=1 but ${IMAGE_PREFIX:-digisoft}-$img:${IMAGE_TAG:-latest} is not loaded" >&2
       exit 1
     }
   done
@@ -82,6 +86,13 @@ if [ "${status:-}" != healthy ]; then
   echo "deploy: api is '$status' — check: docker compose -f docker-compose.prod.yml logs --tail=100 api" >&2
   exit 1
 fi
+
+# Record what is running, so a manual `docker compose ... up -d` later on this host
+# starts the same release instead of whatever IMAGE_TAG/IMAGE_PREFIX .env last held.
+for kv in "IMAGE_TAG=${IMAGE_TAG:-latest}" "IMAGE_PREFIX=${IMAGE_PREFIX:-digisoft}"; do
+  key="${kv%%=*}"
+  if grep -qE "^$key=" .env; then sed -i "s|^$key=.*|$kv|" .env; else echo "$kv" >> .env; fi
+done
 
 # --- tidy ----------------------------------------------------------------------
 # Dangling layers from previous builds; tagged images of the last releases are kept

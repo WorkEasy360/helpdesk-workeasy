@@ -61,7 +61,7 @@ services:
   # Runs `prisma migrate deploy` only. NEVER point `migrate dev`, `migrate reset` or
   # `db push` at the shared Aurora database.
   migrate:
-    image: digisoft-api:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-digisoft}-api:${IMAGE_TAG:-latest}
     profiles: ['migrate']
     env_file: *app-env-file
     environment:
@@ -72,7 +72,7 @@ services:
     logging: *logging
 
   api:
-    image: digisoft-api:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-digisoft}-api:${IMAGE_TAG:-latest}
     build:
       context: ../backend
       dockerfile: api/Dockerfile
@@ -100,7 +100,7 @@ services:
     logging: *logging
 
   worker:
-    image: digisoft-worker:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-digisoft}-worker:${IMAGE_TAG:-latest}
     build:
       context: ../backend
       dockerfile: worker/Dockerfile
@@ -115,7 +115,7 @@ services:
     logging: *logging
 
   web:
-    image: digisoft-web:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-digisoft}-web:${IMAGE_TAG:-latest}
     build:
       context: ../frontend
       dockerfile: Dockerfile

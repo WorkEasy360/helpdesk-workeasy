@@ -176,6 +176,34 @@ separate step**, never on API boot, so a restart can't race a migration.
 Check: `https://DOMAIN` loads, `https://DOMAIN/api/v1/health` returns
 `{"status":"ok",...}`.
 
+### Deploying from GitHub (recommended for small instances)
+
+`.github/workflows/deploy.yml` runs on every push to `main` (or by hand from the
+Actions tab). It builds the three images on GitHub, pushes them to GHCR as
+`ghcr.io/<owner>/helpdesk-{api,worker,web}:<commit sha>`, copies `deploy/` and the
+Prisma migrations to `~/helpdesk` on the host, and runs
+`PULL=1 bash scripts/deploy.sh` there (pull → migrate → up → health check). The host
+never builds and never holds source code; `deploy/.env` stays only on the host.
+
+One-time setup:
+
+1. **Deploy key**: generate a key used only by GitHub
+   (`ssh-keygen -t ed25519 -N "" -f helpdesk-github-deploy`) and append the `.pub` to
+   `~/.ssh/authorized_keys` on the host.
+2. **Repository secrets** (Settings → Secrets and variables → Actions → Secrets):
+   `EC2_HOST` (Elastic IP), `EC2_USER` (`ubuntu`), `EC2_SSH_KEY` (the whole private
+   key file, including the BEGIN/END lines).
+3. **Repository variable** (same page → Variables): `DOMAIN`, the public hostname.
+   It is baked into the web bundle, so changing it means re-running the workflow.
+4. **Security group**: GitHub-hosted runners have no fixed IPs, so port 22 must accept
+   them (0.0.0.0/0). Password login is off on the host; only keys work.
+
+The workflow authenticates the host to GHCR with its own short-lived token for the
+duration of the rollout, so no registry credentials are stored on the host. Roll back
+by re-running the workflow for an older commit (Actions → Deploy → the old run →
+Re-run), or on the host: `IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml up -d api worker web`
+(the images of recent releases stay on the host).
+
 ## 6. First organization
 
 1. With `ALLOW_PUBLIC_REGISTRATION=true` (the template default), open
