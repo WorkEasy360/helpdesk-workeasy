@@ -29,7 +29,12 @@ ALTER ROLE helpdesk_app CONNECTION LIMIT 30;
 
 -- 2. Its own schema, owned by the role, so Prisma can create/alter tables, enums and
 --    indexes there (and only there) during `prisma migrate deploy`.
+--    PostgreSQL 16+ (and RDS, where the admin is not a true superuser) only lets the
+--    creator hand ownership to the role while it may SET ROLE to it, so that is granted
+--    for this one statement and withdrawn again.
+GRANT helpdesk_app TO CURRENT_USER WITH SET TRUE;
 CREATE SCHEMA helpdesk AUTHORIZATION helpdesk_app;
+GRANT helpdesk_app TO CURRENT_USER WITH SET FALSE;
 
 -- 3. Unqualified names resolve to helpdesk first. Prisma already sets search_path from
 --    ?schema=helpdesk; this covers psql sessions and anything else connecting as the role.
