@@ -27,7 +27,14 @@ import { createStorageProvider } from '@digisoft/storage';
 const env = loadEnv();
 const logger = pino({ level: env.LOG_LEVEL, name: 'worker' });
 const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  // See api/src/prisma/prisma.service.ts: Prisma's 5s default is too short against a
+  // distant database.
+  transactionOptions: {
+    timeout: env.DB_TRANSACTION_TIMEOUT_MS,
+    maxWait: env.DB_TRANSACTION_MAX_WAIT_MS,
+  },
+});
 const emailProvider = createEmailProvider(env);
 
 /**

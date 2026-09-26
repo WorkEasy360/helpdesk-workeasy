@@ -18,6 +18,9 @@ export const envSchema = z.object({
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
+  // Interactive transaction limits; raise for a database far from the app host.
+  DB_TRANSACTION_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  DB_TRANSACTION_MAX_WAIT_MS: z.coerce.number().int().positive().default(10_000),
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN: z.string().default('15m'),

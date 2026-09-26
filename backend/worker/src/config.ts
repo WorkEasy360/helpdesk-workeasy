@@ -12,6 +12,9 @@ const schema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
+  // Interactive transaction limits; raise for a database far from the app host.
+  DB_TRANSACTION_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  DB_TRANSACTION_MAX_WAIT_MS: z.coerce.number().int().positive().default(10_000),
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
   /** How often the SLA sweep runs. Warnings and breaches are detected to this resolution. */
   SLA_SCAN_INTERVAL_SECONDS: z.coerce.number().int().min(15).default(60),
