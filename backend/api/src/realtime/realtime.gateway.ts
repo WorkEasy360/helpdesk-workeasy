@@ -10,6 +10,7 @@ import { PERMISSIONS } from '@digisoft/shared';
 import { TokenService } from '../auth/token.service';
 import { AccessControlService } from '../auth/access-control.service';
 import { AppConfig } from '../config/config.module';
+import { SessionAccessService } from '../workeasy360/session-access.service';
 
 export const RT_EVENTS = {
   NOTIFICATION_CREATED: 'notification.created',
@@ -17,6 +18,11 @@ export const RT_EVENTS = {
   AGENT_OFFLINE: 'agent.offline',
   /** Sent just before the server drops a socket whose access token has expired. */
   SESSION_EXPIRED: 'session.expired',
+  /**
+   * Sent just before the server drops a socket whose person no longer has access
+   * (`{ code, reason? }`: WORKEASY360_ACCESS_ENDED, _ACCESS_UNVERIFIED or _SIGN_IN_REQUIRED).
+   */
+  ACCESS_ENDED: 'access.ended',
 } as const;
 
 /** setTimeout's ceiling; a longer-lived token is simply re-checked by reconnecting sooner. */
@@ -39,6 +45,12 @@ export interface TicketAudienceRooms {
  * A socket lives no longer than the access token it connected with: it is dropped when
  * the token expires, so revoked access or changed permissions cannot outlive the token
  * on an open connection. The client reconnects with a fresh token.
+ *
+ * Only agents connect (a customer's token is refused), and Workeasy360 access is part of
+ * the handshake and re-checked on a timer (REALTIME_ACCESS_RECHECK_SECONDS, default 60 s)
+ * through the same cached decision HTTP requests use, so it costs no extra question: a
+ * person whose access ended is disconnected within one re-check even though `/auth/refresh`
+ * keeps minting tokens for them (so they can reach the access-ended screen and sign out).
  */
 @WebSocketGateway({ namespace: '/rt' })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -51,6 +63,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly tokens: TokenService,
     private readonly accessControl: AccessControlService,
     private readonly config: AppConfig,
+    private readonly sessionAccess: SessionAccessService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -84,6 +97,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     };
     client.data.identity = identity;
 
+    const w360 = result.payload.w360;
     const exp = (result.payload as { exp?: number }).exp;
     if (exp) {
       const expiry = setTimeout(
@@ -106,6 +120,25 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       return;
     }
 
+    if (user.type !== 'AGENT') {
+      // The agent channel is for agents: a help center customer's token is not welcome here.
+      client.disconnect(true);
+      return;
+    }
+    try {
+      if (!(await this.stillAllowed(client, w360))) {
+        return;
+      }
+    } catch {
+      client.disconnect(true);
+      return;
+    }
+    const recheck = setInterval(() => {
+      void this.stillAllowed(client, w360).catch(() => undefined);
+    }, this.config.get('REALTIME_ACCESS_RECHECK_SECONDS') * 1000);
+    recheck.unref();
+    client.data.recheck = recheck;
+
     const rooms = [
       orgRoom(identity.organizationId),
       userRoom(identity.organizationId, identity.userId),
@@ -117,14 +150,36 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       rooms.push(allTicketsRoom(identity.organizationId));
     }
 
+    if (client.disconnected) {
+      return;
+    }
     await client.join(rooms);
     this.server
       .to(orgRoom(identity.organizationId))
       .emit(RT_EVENTS.AGENT_ONLINE, { userId: identity.userId });
   }
 
+  /**
+   * Whether this socket's person may still receive events. A refusal tells the client why and
+   * drops the socket; an outage of Workeasy360 is never a refusal (the cache keeps its last
+   * answer), so only a known denial, a refusal of our own client or a missing sign-in ends it.
+   */
+  private async stillAllowed(client: Socket, w360: { org: string; sub?: string } | undefined): Promise<boolean> {
+    const decision = await this.sessionAccess.evaluate({ kind: 'token', w360 });
+    if (decision.ok) {
+      return true;
+    }
+    client.emit(RT_EVENTS.ACCESS_ENDED, {
+      code: decision.code,
+      ...(decision.reason ? { reason: decision.reason } : {}),
+    });
+    client.disconnect(true);
+    return false;
+  }
+
   handleDisconnect(client: Socket): void {
     clearTimeout(client.data.expiry as NodeJS.Timeout | undefined);
+    clearInterval(client.data.recheck as NodeJS.Timeout | undefined);
     const identity = client.data.identity as SocketIdentity | undefined;
     if (!identity) {
       return;

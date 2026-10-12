@@ -71,7 +71,8 @@ docker build -t digisoft-web --build-arg NEXT_PUBLIC_API_URL=https://desk.exampl
 - [ ] `TRUST_PROXY=1` (nginx is one hop), so `req.ip` and rate limits see the real client.
 - [ ] Instance role attached, IMDSv2 hop limit 2, SES domain verified with DKIM, SES production access granted, S3 bucket private.
 - [ ] `S3_ENDPOINT` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` absent (not empty) so the SDK uses the instance role.
-- [ ] First organization registered, then `ALLOW_PUBLIC_REGISTRATION=false`.
+- [ ] Registered in Workeasy360 (`connect_product_sso --product easy_helpdesk`) and the `WORKEASY360_*` values set for **api and worker** ([docs/workeasy360-sso.md](../../docs/workeasy360-sso.md)); with `WORKEASY360_SSO_ONLY` on (the production default) both refuse to boot without them.
+- [ ] An organization that already exists attached with `link-workeasy360-organization` **before** its first Workeasy360 sign-in. Otherwise: first organization registered, then `ALLOW_PUBLIC_REGISTRATION=false` (registration is refused anyway while SSO-only).
 - [ ] `CHANNEL_ENCRYPTION_KEY` backed up somewhere other than the instance.
 - [ ] Aurora automated backups / PITR confirmed with the database owner.
 

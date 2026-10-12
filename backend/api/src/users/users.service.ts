@@ -18,6 +18,7 @@ import { TokenService } from '../auth/token.service';
 import { AccessControlService } from '../auth/access-control.service';
 import { MailerService } from '../email/mailer.service';
 import { assertCanGrantRoles } from '../auth/role-grant';
+import { Workeasy360Settings } from '../workeasy360/workeasy360.settings';
 
 const SORTABLE = ['createdAt', 'updatedAt', 'firstName', 'lastName', 'email'] as const;
 const INVITE_TTL_DAYS = 7;
@@ -48,6 +49,7 @@ export class UsersService {
     private readonly accessControl: AccessControlService,
     private readonly mailer: MailerService,
     private readonly audit: AuditService,
+    private readonly workeasy360: Workeasy360Settings,
   ) {}
 
   async list(query: ListUsersQuery): Promise<Paginated<unknown>> {
@@ -89,6 +91,12 @@ export class UsersService {
   }
 
   async create(actor: AuthenticatedUser, input: CreateUserInput) {
+    // Workeasy360 is the only way in: an administrator pre-provisions the person (name,
+    // roles, departments) and they sign in through Workeasy360, which links the account by
+    // its verified address. A password cannot be set for them, and nothing is mailed.
+    if (input.password) {
+      this.workeasy360.assertPasswordSignInAllowed();
+    }
     await this.assertRolesGrantable(actor, input.roleIds);
     await this.assertDepartmentsExist(input.departmentIds);
 
@@ -128,7 +136,7 @@ export class UsersService {
       newValue: { email: user.email, roleIds: input.roleIds },
     });
 
-    if (!passwordHash) {
+    if (!passwordHash && !this.workeasy360.ssoOnly) {
       await this.sendInvite(actor.organizationId, user.id);
     }
     return user;
@@ -269,6 +277,7 @@ export class UsersService {
 
   /** Issues an invite link so a user created without a password can set their own. */
   async sendInvite(organizationId: string, userId: string): Promise<void> {
+    this.workeasy360.assertPasswordSignInAllowed();
     const user = await this.db.user.findUnique({
       where: { id: userId },
       select: {

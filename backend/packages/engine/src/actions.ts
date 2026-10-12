@@ -190,6 +190,9 @@ export async function applyAction(
             subject,
             text,
             html: `<p>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>')}</p>`,
+            // An automation's message to a customer is a business effect: the worker checks
+            // the organization's Workeasy360 access again right before sending it.
+            requiresAccess: true,
           });
         }
         await audit('ticket.email_sent', undefined, { to: recipients, subject });

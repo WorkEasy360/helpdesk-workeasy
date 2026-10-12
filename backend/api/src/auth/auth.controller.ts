@@ -16,6 +16,7 @@ import {
   type LoginResponse,
   type LoginResult,
   type RegisterInput,
+  type AuthMethods,
   type ResetPasswordInput,
   type UpdateUserInput,
   type VerifyEmailInput,
@@ -24,23 +25,35 @@ import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { zodBody } from '../common/pipes/zod-validation.pipe';
 import { AppError } from '../common/errors/app-error';
+import { EntitlementExempt } from '../common/decorators/entitlement.decorator';
 import { AppConfig } from '../config/config.module';
+import { Workeasy360Settings } from '../workeasy360/workeasy360.settings';
 import { AuthService, type RequestMeta, type SessionResult } from './auth.service';
+import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from './session-cookie';
 
-export const REFRESH_COOKIE = 'ds_refresh';
+export { REFRESH_COOKIE } from './session-cookie';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly config: AppConfig,
+    private readonly workeasy360: Workeasy360Settings,
   ) {}
+
+  /** Which sign-in methods the login page should offer. */
+  @Public()
+  @Get('methods')
+  methods(): AuthMethods {
+    return this.workeasy360.methods();
+  }
 
   /** Lets the sign-up page know whether to offer organization registration at all. */
   @Public()
   @Get('register')
   registrationStatus(): { enabled: boolean } {
-    return { enabled: this.config.get('ALLOW_PUBLIC_REGISTRATION') };
+    // With Workeasy360 as the only way in, organizations arrive through their first sign-in.
+    return { enabled: this.config.get('ALLOW_PUBLIC_REGISTRATION') && !this.workeasy360.ssoOnly };
   }
 
   @Public()
@@ -51,6 +64,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
+    this.workeasy360.assertPasswordSignInAllowed();
     // Self-hosted and invite-only deployments turn off creating new organizations.
     if (!this.config.get('ALLOW_PUBLIC_REGISTRATION')) {
       throw AppError.forbidden('New organization sign-up is disabled', 'REGISTRATION_DISABLED');
@@ -68,6 +82,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResult> {
+    this.workeasy360.assertPasswordSignInAllowed();
     const result = await this.auth.login(dto, this.meta(req));
     // The same credentials matched more than one organization: hand back the choices
     // rather than a session — no token is issued and no cookie is set until the caller
@@ -85,7 +100,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
-    const raw = this.readRefreshCookie(req);
+    const raw = readRefreshCookie(req);
     if (!raw) {
       throw AppError.unauthenticated('No active session', 'TOKEN_EXPIRED');
     }
@@ -100,11 +115,13 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ loggedOut: true }> {
-    await this.auth.logout(this.readRefreshCookie(req));
-    res.clearCookie(REFRESH_COOKIE, this.cookieOptions(0));
+    await this.auth.logout(readRefreshCookie(req));
+    clearRefreshCookie(res, this.config);
     return { loggedOut: true };
   }
 
+  /** Stays available after Workeasy360 access ended, so the person can see why and sign out. */
+  @EntitlementExempt()
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser): AuthenticatedUser {
     return user;
@@ -126,6 +143,7 @@ export class AuthController {
   async forgotPassword(
     @Body(zodBody(forgotPasswordSchema)) dto: ForgotPasswordInput,
   ): Promise<{ requested: true }> {
+    this.workeasy360.assertPasswordSignInAllowed();
     await this.auth.forgotPassword(dto);
     return { requested: true };
   }
@@ -137,6 +155,7 @@ export class AuthController {
   async resetPassword(
     @Body(zodBody(resetPasswordSchema)) dto: ResetPasswordInput,
   ): Promise<{ reset: true }> {
+    this.workeasy360.assertPasswordSignInAllowed();
     await this.auth.resetPassword(dto);
     return { reset: true };
   }
@@ -168,35 +187,19 @@ export class AuthController {
     @Body(zodBody(changePasswordSchema)) dto: ChangePasswordInput,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ changed: true }> {
+    this.workeasy360.assertPasswordSignInAllowed();
     await this.auth.changePassword(user.id, user.organizationId, dto);
-    res.clearCookie(REFRESH_COOKIE, this.cookieOptions(0));
+    clearRefreshCookie(res, this.config);
     return { changed: true };
   }
 
   private respondWithSession(res: Response, session: SessionResult): LoginResponse {
-    const maxAge = session.refreshTokenExpiresAt.getTime() - Date.now();
-    res.cookie(REFRESH_COOKIE, session.refreshToken, this.cookieOptions(maxAge));
+    setRefreshCookie(res, this.config, session.refreshToken, session.refreshTokenExpiresAt);
     return {
       status: 'authenticated',
       accessToken: session.accessToken,
       expiresIn: session.expiresIn,
       user: session.user,
-    };
-  }
-
-  private readRefreshCookie(req: Request): string | undefined {
-    const cookies = req.cookies as Record<string, string> | undefined;
-    return cookies?.[REFRESH_COOKIE];
-  }
-
-  private cookieOptions(maxAge: number) {
-    return {
-      httpOnly: true,
-      secure: this.config.get('COOKIE_SECURE'),
-      sameSite: 'lax' as const,
-      domain: this.config.get('COOKIE_DOMAIN'),
-      path: `/${this.config.get('API_PREFIX')}/auth`,
-      maxAge,
     };
   }
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { hasClientCredentials } from '@digisoft/workeasy360';
 
 const bool = z
   .union([z.boolean(), z.string()])
@@ -7,7 +8,19 @@ const bool = z
 /** Optional string where an empty value (`S3_ENDPOINT=` in an env file) means unset. */
 const optionalString = z.preprocess((v) => (v === '' ? undefined : v), z.string().optional());
 
-export const envSchema = z.object({
+/** An on/off switch that accepts 1/true/yes/on (an operator typing `1` must not silently get "off"). */
+const flag = z.preprocess(
+  (v) => (v === '' ? undefined : v),
+  z
+    .union([z.boolean(), z.string()])
+    .transform((v) => (typeof v === 'boolean' ? v : ['1', 'true', 'yes', 'on'].includes(v.trim().toLowerCase())))
+    .optional(),
+);
+
+/** An optional absolute URL where an empty value means unset. */
+const optionalUrl = z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional());
+
+const baseEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
   API_PREFIX: z.string().default('api/v1'),
@@ -98,7 +111,53 @@ export const envSchema = z.object({
   PUBLIC_API_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
   /** Retry budget for one outbound webhook delivery before it is marked failed. */
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
+  /**
+   * How often an open realtime socket re-checks that its person still has Easy Help Desk
+   * access. It reads the entitlement cache (no extra question to Workeasy360 inside a window).
+   */
+  /**
+   * Sign-in attempts per client address per minute on each of the Workeasy360 start and callback
+   * routes. Raise it for an office behind one shared (NATed) address.
+   */
+  WORKEASY360_SIGN_IN_RATE_LIMIT: z.coerce.number().int().min(1).max(10_000).default(30),
+  REALTIME_ACCESS_RECHECK_SECONDS: z.coerce.number().int().min(1).max(900).default(60),
+
+  /**
+   * Sign in with Workeasy360 (OpenID Connect, authorization code + PKCE, private_key_jwt).
+   * Only the issuer is a URL the app fetches from; every other endpoint is discovered.
+   */
+  WORKEASY360_ISSUER: optionalUrl,
+  WORKEASY360_CLIENT_ID: optionalString,
+  /** Exactly the redirect URI registered in Workeasy360, e.g. https://help.example.com/api/auth/callback/workeasy360. */
+  WORKEASY360_REDIRECT_URI: optionalUrl,
+  /** The credential id Workeasy360 returned when the public key was registered. */
+  WORKEASY360_KEY_ID: optionalString,
+  WORKEASY360_PRIVATE_KEY_FILE: optionalString,
+  /** The PEM inline; literal backslash-n sequences are accepted for a one-line variable. */
+  WORKEASY360_PRIVATE_KEY: optionalString,
+  WORKEASY360_PRODUCT_CODE: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).default('easy_helpdesk')),
+  WORKEASY360_SCOPES: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().default('openid email profile organization'),
+  ),
+  /** Where Workeasy360 returns the browser after "sign out of Workeasy360 too"; registered exactly there. */
+  WORKEASY360_POST_LOGOUT_REDIRECT_URI: optionalUrl,
+  /** The system role a person joining an existing organization gets. Never SUPER_ADMIN. */
+  WORKEASY360_DEFAULT_ROLE: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.enum(['ADMIN', 'AGENT', 'LIGHT_AGENT']).default('AGENT'),
+  ),
+  /**
+   * Workeasy360 is the only way agents sign in: password sign-in, registration, password
+   * reset and invitations are refused. Defaults to on in production, off elsewhere.
+   */
+  WORKEASY360_SSO_ONLY: flag,
 });
+
+export const envSchema = baseEnvSchema.transform((env) => ({
+  ...env,
+  WORKEASY360_SSO_ONLY: env.WORKEASY360_SSO_ONLY ?? env.NODE_ENV === 'production',
+}));
 
 export type Env = z.infer<typeof envSchema>;
 
@@ -129,8 +188,34 @@ export function productionIssues(env: Env): string[] {
   if (env.EMAIL_PROVIDER === 'ses' && !env.AWS_REGION) {
     issues.push('AWS_REGION: required when EMAIL_PROVIDER=ses');
   }
+  if (env.WORKEASY360_SSO_ONLY) {
+    // Workeasy360 is the only way in, so a half-configured client is a locked door.
+    const missing = [
+      ['WORKEASY360_ISSUER', env.WORKEASY360_ISSUER],
+      ['WORKEASY360_CLIENT_ID', env.WORKEASY360_CLIENT_ID],
+      ['WORKEASY360_REDIRECT_URI', env.WORKEASY360_REDIRECT_URI],
+      ['WORKEASY360_KEY_ID', env.WORKEASY360_KEY_ID],
+      ['WORKEASY360_PRIVATE_KEY or WORKEASY360_PRIVATE_KEY_FILE', env.WORKEASY360_PRIVATE_KEY || env.WORKEASY360_PRIVATE_KEY_FILE],
+    ]
+      .filter(([, value]) => !value)
+      .map(([name]) => name);
+    if (missing.length > 0) {
+      issues.push(
+        `WORKEASY360_SSO_ONLY: sign-in is Workeasy360 only, but ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not set (set them, or set WORKEASY360_SSO_ONLY=false)`,
+      );
+    }
+  }
   if (env.NODE_ENV !== 'production') {
     return issues;
+  }
+  for (const key of ['WORKEASY360_ISSUER', 'WORKEASY360_REDIRECT_URI', 'WORKEASY360_POST_LOGOUT_REDIRECT_URI'] as const) {
+    const value = env[key];
+    if (value && !value.startsWith('https://')) {
+      issues.push(`${key}: must be an https URL in production`);
+    }
+  }
+  if (!env.WORKEASY360_SSO_ONLY && hasClientCredentials(env) !== Boolean(env.WORKEASY360_REDIRECT_URI)) {
+    issues.push('WORKEASY360_REDIRECT_URI: set it together with the rest of the Workeasy360 client settings');
   }
   if (!env.COOKIE_SECURE) {
     issues.push('COOKIE_SECURE: must be true in production (cookies would be sent over plain HTTP)');

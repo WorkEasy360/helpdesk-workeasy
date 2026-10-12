@@ -37,7 +37,14 @@ export class JwtAuthGuard implements CanActivate {
 
     // Resolved per request (Redis-cached) so a revoked role stops working immediately
     // instead of at the next token refresh.
-    request.user = await this.accessControl.resolveUser(request.accessTokenPayload);
+    const user = await this.accessControl.resolveUser(request.accessTokenPayload);
+    // Agent routes are for agents. A help center customer holds a token of the same shape
+    // (their own cookie, their own refresh route), and a route that asks for no particular
+    // permission would otherwise answer them. Portal routes are public and run PortalGuard.
+    if (user.type !== 'AGENT') {
+      throw AppError.forbidden('This resource is for agents', 'FORBIDDEN');
+    }
+    request.user = user;
     return true;
   }
 }

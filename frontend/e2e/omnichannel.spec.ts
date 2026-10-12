@@ -37,7 +37,8 @@ test('registers an organization and connects an email channel', async ({ page })
   await expect(page).toHaveURL(/\/dashboard$/);
 
   await page.goto('/settings/channels');
-  await page.getByRole('button', { name: 'New channel' }).click();
+  // The page header and the empty state each offer one; which exists first depends on timing.
+  await page.getByRole('button', { name: 'New channel' }).first().click();
 
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('textbox', { name: 'Name', exact: true }).fill('Support inbox');

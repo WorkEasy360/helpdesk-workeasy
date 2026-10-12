@@ -9,6 +9,7 @@ import axios, {
 } from 'axios';
 import type { ApiFailure, ApiResponse, PageMeta } from '@digisoft/shared';
 import { API_URL } from '@/lib/env';
+import { SIGN_IN_REQUIRED_CODE, SIGN_IN_REQUIRED_PATH, accessRefusalPath } from '@/lib/sso';
 
 const BASE_URL = API_URL;
 
@@ -108,8 +109,19 @@ async function refreshAccessToken(options: RefreshOptions = {}): Promise<string 
         setAccessToken(token);
         return token;
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         setAccessToken(null);
+        // SSO-only: this session was started with a password and may not be renewed. Say so on
+        // the sign-in page instead of just showing an unexplained form.
+        if (
+          axios.isAxiosError(error) &&
+          error.response?.data?.error?.code === SIGN_IN_REQUIRED_CODE &&
+          typeof window !== 'undefined' &&
+          !path.includes('/portal/') &&
+          !window.location.pathname.startsWith('/login')
+        ) {
+          window.location.assign(SIGN_IN_REQUIRED_PATH);
+        }
         return null;
       })
       .finally(() => {
@@ -160,6 +172,21 @@ http.interceptors.response.use(
       } else {
         onSessionLost?.();
       }
+    }
+
+    // Easy Help Desk access ended (or cannot be confirmed) for this organization or person:
+    // the session is still valid, so show the one screen that explains it and offers sign-out.
+    // Help center (customer) requests are not the agent's session and are left to their pages.
+    const refusalPath = status === 403 ? accessRefusalPath(code, error.response?.data?.error?.details) : null;
+    if (
+      refusalPath &&
+      typeof window !== 'undefined' &&
+      !(original?.url ?? '').startsWith('/portal/') &&
+      !window.location.pathname.startsWith('/access-ended') &&
+      !window.location.pathname.startsWith('/login')
+    ) {
+      setAccessToken(null);
+      window.location.assign(refusalPath);
     }
 
     throw new ApiError(

@@ -150,6 +150,8 @@ export class CsatService {
           url,
         },
         survey.delayMinutes * 60_000,
+        // Sent minutes after the resolution, by the worker: re-checked there.
+        { requiresAccess: true },
       );
     } catch (error) {
       this.logger.error(

@@ -52,6 +52,31 @@ describe('Authentication (e2e)', () => {
     expect(await harness.prisma.businessHours.count({ where: { isDefault: true } })).toBe(1);
   });
 
+  describe('without Workeasy360 configured (the default outside production)', () => {
+    it('offers the password form only', async () => {
+      const response = await request(http).get(apiPath('/auth/methods')).expect(200);
+      expect(response.body.data).toEqual({ password: true, workeasy360: false, workeasy360SignOut: false });
+    });
+
+    it('keeps registration open', async () => {
+      const response = await request(http).get(apiPath('/auth/register')).expect(200);
+      expect(response.body.data).toEqual({ enabled: true });
+    });
+
+    it('sends the browser back to the sign-in page, not to an error, when the routes are used anyway', async () => {
+      const start = await request(http).get('/api/auth/workeasy360/start').expect(302);
+      expect(start.headers['location']).toBe('http://localhost:3000/login?sso_error=unavailable');
+      const callback = await request(http).get('/api/auth/callback/workeasy360?code=x&state=y').expect(302);
+      expect(callback.headers['location']).toBe('http://localhost:3000/login?sso_error=expired');
+      const logout = await request(http).get('/api/auth/workeasy360/logout').expect(302);
+      expect(logout.headers['location']).toBe('http://localhost:3000/login');
+    });
+
+    it('keeps the SSO routes out of the versioned prefix', async () => {
+      await request(http).get('/api/v1/api/auth/workeasy360/start').expect(404);
+    });
+  });
+
   it('never stores the password in recoverable form', async () => {
     await register().expect(201);
     const user = await harness.prisma.user.findFirstOrThrow({ select: { passwordHash: true } });
@@ -95,8 +120,12 @@ describe('Authentication (e2e)', () => {
       expect(cookie).toContain('ds_refresh=');
       expect(cookie).toContain('HttpOnly');
       expect(cookie).toContain('SameSite=Lax');
-      // The refresh cookie is scoped to the auth routes, not the whole API.
-      expect(cookie).toContain('Path=/api/v1/auth');
+      // Scoped to /api, not the whole site: the Workeasy360 callback (/api/auth/callback/...)
+      // sits outside the versioned prefix and has to see it to end a previous session. The
+      // path the cookie had before is expired alongside, so a browser never holds two.
+      expect(cookie).toContain('Path=/api;');
+      const all = response.headers['set-cookie'] as unknown as string[];
+      expect(all.some((c) => c.startsWith('ds_refresh=;') && c.includes('Path=/api/v1/auth'))).toBe(true);
     });
 
     it('gives the same answer for a wrong password and an unknown address', async () => {

@@ -21,6 +21,10 @@ export interface AnalyticsProcessorDeps extends AnalyticsDeps {
 }
 
 /**
+ * Class C (retention and system maintenance - never gated): rollups keep the organization's
+ * history correct whether or not it still holds the product. The expiry of unanswered
+ * surveys in the same pass is class B (cleanup).
+ *
  * The nightly-ish sweep. Recent days are recomputed rather than appended to, because a
  * ticket resolved today changes the numbers for the day it was created on; surveys
  * nobody answered are expired in the same pass so the response rate stays honest.
@@ -35,7 +39,12 @@ export async function handleMetricsRollup(deps: AnalyticsProcessorDeps): Promise
   );
 }
 
-/** Renders one export to CSV and writes it to the same storage attachments use. */
+/**
+ * Renders one export to CSV and writes it to the same storage attachments use.
+ *
+ * Class B (allowed after access ends - never gated): finishing an export the customer already
+ * asked for. A request made after access ended is refused at the API, not here.
+ */
 export async function handleReportExport(
   job: Job<ReportExportJob>,
   deps: AnalyticsProcessorDeps,

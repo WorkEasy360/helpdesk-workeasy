@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { hasClientCredentials } from '@digisoft/workeasy360';
 
 const bool = z
   .union([z.boolean(), z.string()])
@@ -7,7 +8,16 @@ const bool = z
 /** Optional string where an empty value (`S3_ENDPOINT=` in an env file) means unset. */
 const optionalString = z.preprocess((v) => (v === '' ? undefined : v), z.string().optional());
 
-const schema = z.object({
+/** An on/off switch that accepts 1/true/yes/on. */
+const flag = z.preprocess(
+  (v) => (v === '' ? undefined : v),
+  z
+    .union([z.boolean(), z.string()])
+    .transform((v) => (typeof v === 'boolean' ? v : ['1', 'true', 'yes', 'on'].includes(v.trim().toLowerCase())))
+    .optional(),
+);
+
+const baseSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   DATABASE_URL: z.string().min(1),
@@ -48,7 +58,25 @@ const schema = z.object({
   METRICS_ROLLUP_INTERVAL_SECONDS: z.coerce.number().int().min(60).default(900),
   /** How many recent days each sweep recomputes. */
   METRICS_ROLLUP_DAYS: z.coerce.number().int().min(1).max(31).default(2),
+
+  /**
+   * Workeasy360 (same values as the API). Background jobs of an organization bound to
+   * Workeasy360 re-check its entitlement right before producing a business effect
+   * (docs/workeasy360-sso.md). The worker needs no redirect URI: it never signs anyone in.
+   */
+  WORKEASY360_ISSUER: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
+  WORKEASY360_CLIENT_ID: optionalString,
+  WORKEASY360_KEY_ID: optionalString,
+  WORKEASY360_PRIVATE_KEY_FILE: optionalString,
+  WORKEASY360_PRIVATE_KEY: optionalString,
+  /** When on (the default in production) the worker refuses to start without the settings above. */
+  WORKEASY360_SSO_ONLY: flag,
 });
+
+export const schema = baseSchema.transform((env) => ({
+  ...env,
+  WORKEASY360_SSO_ONLY: env.WORKEASY360_SSO_ONLY ?? env.NODE_ENV === 'production',
+}));
 
 export type WorkerEnv = z.infer<typeof schema>;
 
@@ -57,6 +85,13 @@ export function productionIssues(env: WorkerEnv): string[] {
   const issues: string[] = [];
   if (env.EMAIL_PROVIDER === 'ses' && !env.AWS_REGION) {
     issues.push('AWS_REGION: required when EMAIL_PROVIDER=ses');
+  }
+  if (env.WORKEASY360_SSO_ONLY && !hasClientCredentials(env)) {
+    // Without a client the worker cannot ask whether an organization still holds the product,
+    // and an expired organization's automations, webhooks and messages would keep running.
+    issues.push(
+      'WORKEASY360_ISSUER, WORKEASY360_CLIENT_ID, WORKEASY360_KEY_ID and WORKEASY360_PRIVATE_KEY(_FILE): required while WORKEASY360_SSO_ONLY is on (same values as the API)',
+    );
   }
   if (env.NODE_ENV !== 'production') {
     return issues;

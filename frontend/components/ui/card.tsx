@@ -14,8 +14,13 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
   return <div className={cn('flex flex-col gap-1 border-b border-border p-4', className)} {...props} />;
 }
 
-export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h2 className={cn('text-sm font-semibold tracking-tight', className)} {...props} />;
+/** A card title is an h2 by default; the title that names a whole page is its h1 (`as="h1"`), looking the same. */
+export function CardTitle({
+  className,
+  as: Heading = 'h2',
+  ...props
+}: React.HTMLAttributes<HTMLHeadingElement> & { as?: 'h1' | 'h2' | 'h3' }) {
+  return <Heading className={cn('text-sm font-semibold tracking-tight', className)} {...props} />;
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {

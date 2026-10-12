@@ -14,10 +14,11 @@ List endpoints share `?page&pageSize&sort&order&q&<filters>` and are cursor-capa
 
 ## Auth — P1 (implemented)
 ```
-GET    /auth/register                 # { enabled } — whether self-serve signup is on
+GET    /auth/methods                  # { password, workeasy360, workeasy360SignOut } — which ways in are offered
+GET    /auth/register                 # { enabled } — whether self-serve signup is on (false when SSO-only)
 POST   /auth/register                 # creates org + super admin; 403 REGISTRATION_DISABLED
                                       # when ALLOW_PUBLIC_REGISTRATION=false
-POST   /auth/login
+POST   /auth/login                    # 403 PASSWORD_SIGN_IN_DISABLED when WORKEASY360_SSO_ONLY
 POST   /auth/refresh                  # refresh cookie -> new access token (rotates)
 POST   /auth/logout
 GET    /auth/me
@@ -26,6 +27,15 @@ POST   /auth/forgot-password
 POST   /auth/reset-password
 POST   /auth/verify-email
 POST   /auth/resend-verification
+
+# Sign in with Workeasy360 — browser redirects, OUTSIDE the /api/v1 prefix (see docs/workeasy360-sso.md)
+GET    /api/auth/workeasy360/start    # ?organization=<uuid>&next=<path> -> 302 to Workeasy360
+GET    /api/auth/callback/workeasy360 # ?code&state -> 302 to the app (session) or /login?sso_error=<code>
+GET    /api/auth/workeasy360/logout   # 302 to Workeasy360's end-session endpoint; changes nothing locally
+
+# Errors added by Workeasy360 access checks (HTTP 403): PASSWORD_SIGN_IN_DISABLED,
+# WORKEASY360_ACCESS_ENDED (details.reason), WORKEASY360_READ_ONLY, WORKEASY360_ACCESS_UNVERIFIED,
+# HELP_CENTER_UNAVAILABLE (portal routes of an organization whose access ended)
 POST   /auth/change-password          # change own password; revokes every session
 ```
 

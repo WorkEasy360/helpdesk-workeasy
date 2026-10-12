@@ -137,6 +137,7 @@ Customers (contacts) authenticate into the same org but with role `CUSTOMER`; th
 **Authentication**
 - Passwords: Argon2id.
 - Login → `{ accessToken (JWT, 15 min, in memory/response body), refreshToken (opaque, 30 d, HTTP-only + Secure + SameSite=Lax cookie) }`.
+- Agents sign in with Workeasy360 (OIDC; `docs/workeasy360-sso.md`): the access token of a Workeasy360-linked organization also carries `w360: { org, sub }`, and a global guard asks Workeasy360 on a cadence whether access has ended. The refresh cookie `ds_refresh` is scoped to `/api`.
 - Refresh tokens are stored hashed in `RefreshToken` with `familyId`; rotation on every use, and reuse of a consumed token revokes the whole family (replay detection).
 - Access token claims: `sub` (userId), `org` (organizationId), `role`, `perms` (permission-key array), `typ`.
 - Email verification and password reset use single-use hashed tokens in `VerificationToken` with TTL.

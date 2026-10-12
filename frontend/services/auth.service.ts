@@ -1,4 +1,5 @@
 import type {
+  AuthMethods,
   LoginInput,
   LoginResponse,
   LoginResult,
@@ -17,6 +18,8 @@ export const authService = {
   /** Self-service profile edit (name, phone, avatar); answers with the refreshed identity. */
   updateMe: (input: Pick<UpdateUserInput, 'firstName' | 'lastName' | 'phone' | 'avatarUrl'>) =>
     apiPatch<AuthenticatedUser>('/auth/me', input),
+  /** Which ways in this deployment offers: password, Workeasy360, and Workeasy360 sign-out. */
+  methods: () => apiGet<AuthMethods>('/auth/methods'),
   /** Whether new organizations may sign up on this deployment. */
   registrationStatus: () => apiGet<{ enabled: boolean }>('/auth/register'),
   forgotPassword: (input: { email: string; organizationSlug?: string }) =>

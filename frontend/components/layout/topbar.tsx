@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Check, LogOut, Menu, Monitor, Moon, Sun, UserRound } from 'lucide-react';
-import { authService } from '@/services/auth.service';
 import { notificationsService } from '@/services/notifications.service';
 import { useAuthStore } from '@/stores/auth.store';
+import { useSignOut } from '@/hooks/use-sign-out';
 import { useUiStore } from '@/stores/ui.store';
 import { initials, formatDateTime, cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -162,21 +162,11 @@ const menuItemClass =
   'flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
 
 export function Topbar() {
-  const router = useRouter();
-  const queryClient = useQueryClient();
   const { theme, setTheme } = useTheme();
   const user = useAuthStore((state) => state.user);
-  const clear = useAuthStore((state) => state.clear);
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
   const sidebarOpen = useUiStore((state) => state.sidebarOpen);
-
-  const signOut = async () => {
-    await authService.logout().catch(() => undefined);
-    clear();
-    // Drop every cached response so the next person on this browser sees nothing of ours.
-    queryClient.clear();
-    router.replace('/login');
-  };
+  const { signOut, signOutOfWorkeasy360, canSignOutOfWorkeasy360 } = useSignOut();
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
@@ -258,6 +248,12 @@ export function Topbar() {
                   <LogOut className="h-4 w-4" aria-hidden />
                   Sign out
                 </DropdownMenu.Item>
+                {canSignOutOfWorkeasy360 ? (
+                  <DropdownMenu.Item className={menuItemClass} onSelect={() => void signOutOfWorkeasy360()}>
+                    <LogOut className="h-4 w-4" aria-hidden />
+                    Sign out of Easy Help Desk and Workeasy360
+                  </DropdownMenu.Item>
+                ) : null}
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>

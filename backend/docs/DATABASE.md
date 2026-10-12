@@ -120,6 +120,23 @@ model User {
   @@index([organizationId, isActive])
 }
 
+// Sign in with Workeasy360 (migration 20261012120000_workeasy360_sso). A tenant model.
+// A user belongs to one organization, so one Workeasy360 person in two organizations is
+// two User rows, each with its own identity. Organization.workeasy360OrganizationId
+// (uuid, unique, nullable) binds an organization to its Workeasy360 organization.
+model ExternalIdentity {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  issuer         String   // exact issuer string
+  subject        String   // the token's sub; never the email
+  email          String?  // last reported address, profile data only
+  lastLoginAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  @@unique([issuer, subject, organizationId])
+  @@unique([issuer, userId])
+}
+
 model Role {
   id             String  @id @default(cuid())
   organizationId String

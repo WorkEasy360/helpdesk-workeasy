@@ -218,14 +218,35 @@ export interface SlaEvent {
   target: 'first_response' | 'resolution';
 }
 
+export interface ScanSlaOptions {
+  /**
+   * Whether an organization's SLA work may run at all. A denied organization's tickets are
+   * left untouched - not stamped, so their warnings and breaches are raised after access is
+   * renewed. Asked once per distinct organization by the caller's own memo.
+   */
+  isOrganizationAllowed?: (organizationId: string) => Promise<boolean>;
+  /**
+   * Organizations already known to be denied: their tickets are left out of the queries
+   * altogether, so a denied organization costs nothing per sweep until it is asked again.
+   */
+  excludeOrganizationIds?: readonly string[];
+}
+
 /**
  * One idempotent sweep: finds targets that are due within their policy's warning
  * window or already past due, stamps them, and returns the events to publish. Running
  * it twice in a row produces no second event because the stamps are the guard.
  */
-export async function scanSla(prisma: PrismaClient, now = new Date()): Promise<SlaEvent[]> {
+export async function scanSla(
+  prisma: PrismaClient,
+  now = new Date(),
+  options: ScanSlaOptions = {},
+): Promise<SlaEvent[]> {
   const events: SlaEvent[] = [];
+  const allowed = options.isOrganizationAllowed;
+  const excluded = options.excludeOrganizationIds ?? [];
   const active = {
+    ...(excluded.length > 0 ? { organizationId: { notIn: [...excluded] } } : {}),
     deletedAt: null,
     slaPausedAt: null,
     slaPolicyId: { not: null },
@@ -239,6 +260,7 @@ export async function scanSla(prisma: PrismaClient, now = new Date()): Promise<S
     select: { id: true, organizationId: true },
   });
   for (const ticket of frBreached) {
+    if (allowed && !(await allowed(ticket.organizationId))) continue;
     await prisma.ticket.update({ where: { id: ticket.id }, data: { firstResponseBreachedAt: now } });
     events.push({ organizationId: ticket.organizationId, ticketId: ticket.id, kind: 'breach', target: 'first_response' });
   }
@@ -248,6 +270,7 @@ export async function scanSla(prisma: PrismaClient, now = new Date()): Promise<S
     select: { id: true, organizationId: true },
   });
   for (const ticket of resBreached) {
+    if (allowed && !(await allowed(ticket.organizationId))) continue;
     await prisma.ticket.update({ where: { id: ticket.id }, data: { resolutionBreachedAt: now } });
     events.push({ organizationId: ticket.organizationId, ticketId: ticket.id, kind: 'breach', target: 'resolution' });
   }
@@ -275,6 +298,7 @@ export async function scanSla(prisma: PrismaClient, now = new Date()): Promise<S
     },
   });
   for (const ticket of warnable) {
+    if (allowed && !(await allowed(ticket.organizationId))) continue;
     const windowMs = (ticket.slaPolicy?.warningMinutesBefore ?? 0) * 60_000;
     if (windowMs <= 0) continue;
     const threshold = now.getTime() + windowMs;

@@ -20,6 +20,11 @@ interface NormalisedError {
   logAsError: boolean;
 }
 
+/** The request path without its query string: a callback's ?code=&state= must never reach a log line. */
+function pathOf(request: Request): string {
+  return (request.originalUrl ?? request.url ?? '').split('?')[0] ?? '';
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -35,7 +40,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (normalised.logAsError) {
       this.logger.error(
-        `${request.method} ${request.url} -> ${normalised.status} ${normalised.code}`,
+        `${request.method} ${pathOf(request)} -> ${normalised.status} ${normalised.code}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }

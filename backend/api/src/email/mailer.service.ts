@@ -29,6 +29,7 @@ export class MailerService {
     to: string,
     template: EmailTemplate,
     delayMs = 0,
+    options: { requiresAccess?: boolean } = {},
   ): Promise<void> {
     const rendered = renderEmail(template);
     await this.queue.add(
@@ -39,6 +40,7 @@ export class MailerService {
         subject: rendered.subject,
         html: rendered.html,
         text: rendered.text,
+        ...(options.requiresAccess ? { requiresAccess: true } : {}),
       },
       delayMs > 0 ? { delay: delayMs } : {},
     );

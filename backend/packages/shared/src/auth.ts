@@ -90,3 +90,46 @@ export interface OrganizationChoiceResponse {
 }
 
 export type LoginResult = LoginResponse | OrganizationChoiceResponse;
+
+/** Which sign-in methods the login page should offer. Public: it says nothing about any account. */
+export interface AuthMethods {
+  /** Email + password sign-in (and registration, reset, invitations) is available. */
+  password: boolean;
+  /** "Continue with Workeasy360" is configured. */
+  workeasy360: boolean;
+  /** "Sign out of Easy Help Desk and Workeasy360" is offered. */
+  workeasy360SignOut: boolean;
+}
+
+/**
+ * The only values `sso_error` ever takes on the login page after a Workeasy360 sign-in that
+ * did not complete. The frontend maps each to a message; details stay in the server log.
+ */
+export const WORKEASY360_SSO_ERROR_CODES = [
+  'cancelled',
+  'expired',
+  'unavailable',
+  'refused',
+  'rate_limited',
+  'not_entitled',
+  'no_seat',
+  'provider_membership_inactive',
+  'organization_inactive',
+  'access_policy',
+  'email_missing',
+  'email_unverified',
+  'account_conflict',
+  'account_disabled',
+  'membership_inactive',
+  'wrong_product',
+  'wrong_organization',
+] as const;
+export type Workeasy360SsoErrorCode = (typeof WORKEASY360_SSO_ERROR_CODES)[number];
+
+/** Why Easy Help Desk access ended or cannot be confirmed (the `/access-ended` screen). */
+export const WORKEASY360_ACCESS_ERROR_CODES = [
+  'WORKEASY360_ACCESS_ENDED',
+  'WORKEASY360_READ_ONLY',
+  'WORKEASY360_ACCESS_UNVERIFIED',
+] as const;
+export type Workeasy360AccessErrorCode = (typeof WORKEASY360_ACCESS_ERROR_CODES)[number];

@@ -5,11 +5,13 @@ import {
   portalForgotPasswordSchema,
   portalLoginSchema,
   portalRegisterSchema,
+  resetPasswordSchema,
   type AuthenticatedUser,
   type LoginResponse,
   type PortalForgotPasswordInput,
   type PortalLoginInput,
   type PortalRegisterInput,
+  type ResetPasswordInput,
 } from '@digisoft/shared';
 import { Public } from '../common/decorators/public.decorator';
 import { zodBody } from '../common/pipes/zod-validation.pipe';
@@ -109,6 +111,23 @@ export class PortalAuthController {
   ): Promise<{ requested: true }> {
     await this.portalAuth.forgotPassword(helpCenter, dto.email);
     return { requested: true };
+  }
+
+  /**
+   * Consumes the token from a customer's reset email. Unlike the agent route this is not
+   * switched off by SSO-only mode (customers keep passwords) and accepts only PASSWORD_RESET
+   * tokens of customers of this help center.
+   */
+  @PortalOpen()
+  @Throttle({ auth: { limit: 5, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('reset-password')
+  async resetPassword(
+    @CurrentHelpCenter() helpCenter: PortalHelpCenter,
+    @Body(zodBody(resetPasswordSchema)) dto: ResetPasswordInput,
+  ): Promise<{ reset: true }> {
+    await this.portalAuth.resetPassword(helpCenter, dto);
+    return { reset: true };
   }
 
   @PortalAuth()

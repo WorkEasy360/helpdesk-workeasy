@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { io, type Socket } from 'socket.io-client';
 import { getAccessToken, refreshAccessToken } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth.store';
+import { accessRefusalPath } from '@/lib/sso';
 
 import { SOCKET_URL } from '@/lib/env';
 
@@ -78,6 +79,17 @@ export function useRealtime(): void {
       }, 10_000);
     });
     socket.on('session.expired', reconnectWithFreshToken);
+    // Easy Help Desk access ended (or needs a Workeasy360 sign-in) for this person: the server
+    // drops the socket and it must stay down - refreshing the token would only reconnect a
+    // socket the server will refuse. The person is sent to the screen that explains it.
+    socket.on('access.ended', (payload: { code?: string; reason?: string }) => {
+      closed = true;
+      socket.close();
+      const path = accessRefusalPath(payload?.code, payload?.reason ? { reason: payload.reason } : undefined);
+      if (path && !window.location.pathname.startsWith('/access-ended')) {
+        window.location.assign(path);
+      }
+    });
     socket.on('connect_error', () => {
       // `active` is false when the server (auth middleware) rejected the handshake;
       // transport-level failures keep retrying on socket.io's own backoff.

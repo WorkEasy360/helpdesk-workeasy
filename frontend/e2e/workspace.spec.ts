@@ -58,5 +58,6 @@ test('signs in, creates a contact and finds it in the list', async ({ page }) =>
 test('sends an unauthenticated visitor to the login page', async ({ page }) => {
   await page.context().clearCookies();
   await page.goto('/customers');
-  await expect(page).toHaveURL(/\/login$/);
+  // The page asked for is carried along so sign-in can return to it.
+  await expect(page).toHaveURL(/\/login(\?next=.*)?$/);
 });

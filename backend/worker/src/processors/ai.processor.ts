@@ -1,6 +1,7 @@
 import type { Job } from 'bullmq';
 import type { Logger } from 'pino';
 import { AiDisabledError, loadSettings, runInsight, type AiDeps, type AiTaskType } from '@digisoft/ai';
+import type { AccessGate } from '../access-gate';
 
 export interface AiAnalyseJob {
   organizationId: string;
@@ -19,12 +20,18 @@ const AUTOMATIC: AiTaskType[] = ['SUMMARY', 'SENTIMENT', 'INTENT'];
  * whose feature is switched off is skipped rather than attempted. Everything else —
  * budget, grounding, provider choice, failure recording — is the shared analysis path,
  * the same one the API uses when an agent presses the button.
+ *
+ * Class A (requires active access): analysis spends the organization's AI budget and writes
+ * insights. Skipped - logged, not retried - when access ended.
  */
 export async function handleAiAnalyse(
   job: Job<AiAnalyseJob>,
-  deps: AiDeps & { logger: Logger },
+  deps: AiDeps & { logger: Logger; gate: AccessGate },
 ): Promise<{ generated: string[]; skipped: string[] }> {
   const { organizationId, ticketId, reason } = job.data;
+  if (!(await deps.gate.allows(organizationId, 'ai', { jobId: job.id, ticketId }))) {
+    return { generated: [], skipped: ['Workeasy360 access ended'] };
+  }
   const settings = await loadSettings(deps, organizationId);
 
   if (!settings.isEnabled || !settings.autoAnalyse) {

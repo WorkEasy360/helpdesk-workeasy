@@ -2,6 +2,7 @@ import type { Job } from 'bullmq';
 import type { PrismaClient } from '@digisoft/db';
 import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
+import type { AccessGate } from '../access-gate';
 
 export const RT_BRIDGE_CHANNEL = 'rt:emit';
 
@@ -17,11 +18,19 @@ export interface DeliverNotificationJob {
   dedupeKey?: string;
 }
 
+/**
+ * Class A (requires active access): a notification about the organization's tickets is a
+ * business effect. Skipped - logged, not retried - when access ended.
+ */
 export async function handleDeliverNotification(
   job: Job<DeliverNotificationJob>,
-  deps: { prisma: PrismaClient; redis: Redis; logger: Logger },
-): Promise<{ notificationId: string }> {
+  deps: { prisma: PrismaClient; redis: Redis; logger: Logger; gate: AccessGate },
+): Promise<{ notificationId: string | null }> {
   const { organizationId, userId, type, title, body, link, data, dedupeKey } = job.data;
+
+  if (!(await deps.gate.allows(organizationId, 'notification', { jobId: job.id, type }))) {
+    return { notificationId: null };
+  }
 
   if (dedupeKey) {
     const existing = await deps.prisma.notification.findFirst({

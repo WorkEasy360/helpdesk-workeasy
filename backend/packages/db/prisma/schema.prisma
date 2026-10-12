@@ -51,6 +51,10 @@ model Organization {
   settings       Json      @default("{}")
   /// Monotonic per-organization ticket counter, bumped inside the creation transaction.
   ticketSequence Int       @default(0)
+  /// The Workeasy360 organization this one is bound to (the ID token's `organization_id`).
+  /// Null for an organization outside the Workeasy360 ecosystem; only a bound organization
+  /// has a Workeasy360 entitlement to lose.
+  workeasy360OrganizationId String? @unique @db.Uuid
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
@@ -65,6 +69,7 @@ model Organization {
   holidays            Holiday[]
   auditLogs           AuditLog[]
   refreshTokens       RefreshToken[]
+  externalIdentities  ExternalIdentity[]
   notifications       Notification[]
   ticketStatuses      TicketStatus[]
   ticketPriorities    TicketPriority[]
@@ -169,6 +174,7 @@ model User {
   departments        UserDepartment[]
   teams              TeamMember[]
   refreshTokens      RefreshToken[]
+  externalIdentities ExternalIdentity[]
   tokens             VerificationToken[]
   notifications      Notification[]
   assignedTickets    Ticket[]            @relation("AssignedTickets")
@@ -196,6 +202,31 @@ model User {
   @@index([organizationId, isActive, deletedAt])
   @@index([organizationId, type])
   @@map("users")
+}
+
+/// A person's federated identity: the Workeasy360 `sub`, inside the organization the
+/// token named. Users belong to exactly one organization, so one Workeasy360 person in
+/// two organizations is two User rows, each with its own ExternalIdentity.
+model ExternalIdentity {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  /// The issuer that vouched for the subject (exact string, no trailing slash).
+  issuer         String
+  /// Stable, opaque, permanent identifier from the issuer. Never the email.
+  subject        String
+  /// The address the issuer reported at the last sign-in. Profile data only.
+  email          String?
+  lastLoginAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([issuer, subject, organizationId])
+  @@unique([issuer, userId])
+  @@index([organizationId])
+  @@map("external_identities")
 }
 
 model Role {
@@ -400,6 +431,8 @@ model RefreshToken {
   userId         String
   tokenHash      String    @unique
   familyId       String
+  /// How the session was started: PASSWORD or WORKEASY360. A refresh keeps its family's method.
+  authMethod     String    @default("PASSWORD")
   userAgent      String?
   ip             String?
   expiresAt      DateTime

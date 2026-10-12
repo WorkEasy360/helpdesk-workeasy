@@ -11,3 +11,19 @@ onlyBuiltDependencies:
   - argon2
   - msgpackr-extract
   - '@scarf/scarf'
+
+# Security: transitive dependencies with a published fix that their parents have not yet
+# picked up (pnpm audit, high/critical). Revisit when the parents catch up; nothing here
+# changes a major version of a direct dependency except where noted.
+overrides:
+  # express' proxy-addr: IPv4-mapped IPv6 trust-subnet spoofing
+  proxy-addr: '>=2.0.8'
+  # @nestjs/platform-express -> multer (file-upload DoS fixes in 2.3)
+  multer: '>=2.3.0'
+  # ts-jest -> handlebars (test tooling only)
+  handlebars: '>=4.7.10'
+  # prisma CLI -> @prisma/config -> deepmerge-ts (build/migrate tooling only; 7 -> 8)
+  deepmerge-ts: '>=8.0.2'
+  # @nestjs/cli -> minimatch/glob (build tooling only)
+  'brace-expansion@<2': '^1.1.21'
+  'brace-expansion@>=4 <5.0.11': '^5.0.12'

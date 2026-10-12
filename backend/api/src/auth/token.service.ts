@@ -11,6 +11,12 @@ export interface AccessTokenPayload {
   org: string;
   email: string;
   typ: 'AGENT' | 'CUSTOMER';
+  /**
+   * Present when the organization is bound to Workeasy360: its Workeasy360 organization id
+   * and, when the person signed in through Workeasy360, their `sub`. Lets request-time
+   * entitlement checks run without a database query.
+   */
+  w360?: { org: string; sub?: string };
 }
 
 export type VerifyResult =

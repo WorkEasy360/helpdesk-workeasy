@@ -33,6 +33,7 @@ COPY packages/channels/package.json packages/channels/
 COPY packages/ai/package.json packages/ai/
 COPY packages/analytics/package.json packages/analytics/
 COPY packages/storage/package.json packages/storage/
+COPY packages/workeasy360/package.json packages/workeasy360/
 COPY api/package.json api/
 RUN pnpm install --frozen-lockfile --filter "@digisoft/api..."
 COPY packages ./packages

@@ -17,6 +17,14 @@ knowledge base — and analytics: a dashboard, per-report screens for tickets, a
 SLA and CSAT, CSV exports rendered in the background, and satisfaction surveys sent on
 resolution and answered through a one-time link with no account behind it.
 
+**Signing in.** Agents sign in with **Workeasy360** (OpenID Connect, authorization code
++ PKCE, `private_key_jwt`): in production it is the only way in, and an organization
+whose Easy Help Desk access ends in Workeasy360 stops being served within 15 minutes -
+sessions, the help center and background jobs alike. Locally, password sign-in keeps
+working with no Workeasy360 running. See [docs/workeasy360-sso.md](docs/workeasy360-sso.md)
+(flow, provisioning rules, registration, environment, sign-out, which background jobs
+are checked).
+
 The repo holds two independent projects, each with its own `package.json`, lockfile,
 Dockerfile and `.env.example`:
 
@@ -154,12 +162,14 @@ Backend suites run from `backend/`, the browser suite from `frontend/`.
 | Suite | Count | Command |
 |---|---|---|
 | Engine unit (business hours, conditions, blueprints) | 24 | `pnpm --filter @digisoft/engine test` |
-| Channel adapters unit (signatures, parsing, threading hints, encryption) | 32 | `pnpm --filter @digisoft/channels test` |
+| Channel adapters unit (signatures, parsing, threading hints, encryption) | 67 | `pnpm --filter @digisoft/channels test` |
 | Assistant unit (providers, prompts, parsing, retrieval) | 19 | `pnpm --filter @digisoft/ai test` |
-| API unit | 73 | `pnpm --filter @digisoft/api test` |
-| API integration (auth, tenant isolation, RBAC, rate limiting, tickets, ticket access, attachments, activities, operations, knowledge base, portal, community, channels, chat, integrations, assistant, analytics/CSAT) | 162 | `pnpm --filter @digisoft/api test:e2e` |
+| API unit (incl. Workeasy360 `next` validation, flow store, entitlement guard, env rules) | 212 | `pnpm --filter @digisoft/api test` |
+| API integration (auth, tenant isolation, RBAC, rate limiting, tickets, ticket access, attachments, activities, operations, knowledge base, portal, community, channels, chat, integrations, assistant, analytics/CSAT, Workeasy360 sign-in against a fake provider, SSO-only, background gating) | 322 | `pnpm --filter @digisoft/api test:e2e` |
 | Analytics unit (ranges, CSV quoting, survey tokens) | 16 | `pnpm --filter @digisoft/analytics test` |
-| Browser (register, customers, ticket workflow, automation and SLA, help center and community, channels and live chat, assistant, dashboards and reports) | 27 | `pnpm test:e2e` (in `frontend/`) |
+| Workeasy360 client and entitlement unit (ID token verification, PKCE, JWKS refresh, trust windows, outage rules, background gate) | 94 | `pnpm --filter @digisoft/workeasy360 test` |
+| Worker unit (which processors are gated, the SLA scan) | 29 | `pnpm --filter @digisoft/worker test` |
+| Browser (register, customers, ticket workflow, automation and SLA, help center and community, channels and live chat, assistant, dashboards and reports, Workeasy360 sign-in screens) | 48 | `pnpm test:e2e` (in `frontend/`) |
 
 ## Documentation
 

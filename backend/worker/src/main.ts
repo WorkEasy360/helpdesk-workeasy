@@ -23,6 +23,15 @@ import {
   type ReportExportJob,
 } from './processors/analytics.processor';
 import { createStorageProvider } from '@digisoft/storage';
+import {
+  BackgroundGate,
+  EntitlementCache,
+  RedisKeyValueStore,
+  Workeasy360Client,
+  hasClientCredentials,
+  readPrivateKeyPem,
+} from '@digisoft/workeasy360';
+import { OPEN_GATE, type AccessGate } from './access-gate';
 
 const env = loadEnv();
 const logger = pino({ level: env.LOG_LEVEL, name: 'worker' });
@@ -36,6 +45,35 @@ const prisma = new PrismaClient({
   },
 });
 const emailProvider = createEmailProvider(env);
+
+/**
+ * Background work that produces a business effect re-checks the organization's Workeasy360
+ * entitlement first (class A); only organizations bound to Workeasy360 are asked about.
+ */
+const gateLogger = {
+  info: (meta: Record<string, unknown>, message: string) => logger.info(meta, message),
+  warn: (meta: Record<string, unknown>, message: string) => logger.warn(meta, message),
+  error: (meta: Record<string, unknown>, message: string) => logger.error(meta, message),
+};
+const gate: AccessGate = hasClientCredentials(env)
+  ? new BackgroundGate({
+      prisma,
+      logger: gateLogger,
+      entitlements: new EntitlementCache({
+        source: new Workeasy360Client({
+          issuer: env.WORKEASY360_ISSUER!,
+          clientId: env.WORKEASY360_CLIENT_ID!,
+          keyId: env.WORKEASY360_KEY_ID!,
+          privateKeyPem: readPrivateKeyPem({
+            file: env.WORKEASY360_PRIVATE_KEY_FILE,
+            inline: env.WORKEASY360_PRIVATE_KEY,
+          }),
+        }),
+        store: new RedisKeyValueStore(connection),
+        logger: gateLogger,
+      }),
+    })
+  : OPEN_GATE;
 
 /**
  * BullMQ does not close a connection it was handed, so every duplicate is tracked here
@@ -88,20 +126,20 @@ const engineDeps: EngineDeps = {
 
 const emailWorker = new Worker<SendEmailJob>(
   'email',
-  (job: Job<SendEmailJob>) => handleSendEmail(job, { emailProvider, logger }),
+  (job: Job<SendEmailJob>) => handleSendEmail(job, { emailProvider, logger, gate }),
   { connection: duplicate(), concurrency: env.WORKER_CONCURRENCY },
 );
 
 const notificationWorker = new Worker<DeliverNotificationJob>(
   'notifications',
   (job: Job<DeliverNotificationJob>) =>
-    handleDeliverNotification(job, { prisma, redis: connection, logger }),
+    handleDeliverNotification(job, { prisma, redis: connection, logger, gate }),
   { connection: duplicate(), concurrency: env.WORKER_CONCURRENCY },
 );
 
 const automationWorker = new Worker<TriggerJob>(
   AUTOMATION_QUEUE,
-  (job: Job<TriggerJob>) => handleAutomation(job, engineDeps),
+  (job: Job<TriggerJob>) => handleAutomation(job, engineDeps, gate),
   { connection: duplicate(), concurrency: env.WORKER_CONCURRENCY },
 );
 
@@ -113,6 +151,7 @@ const channelWorker = new Worker<ChannelSendJob>(
       logger,
       sendEmail: (message) => emailProvider.send(message),
       encryptionKey: env.CHANNEL_ENCRYPTION_KEY,
+      gate,
     }),
   { connection: duplicate(), concurrency: env.WORKER_CONCURRENCY },
 );
@@ -120,13 +159,13 @@ const channelWorker = new Worker<ChannelSendJob>(
 const webhookWorker = new Worker<WebhookDeliveryJob>(
   'webhook',
   (job: Job<WebhookDeliveryJob>) =>
-    handleWebhookDelivery(job, { prisma, logger, maxAttempts: env.WEBHOOK_MAX_ATTEMPTS }),
+    handleWebhookDelivery(job, { prisma, logger, maxAttempts: env.WEBHOOK_MAX_ATTEMPTS, gate }),
   { connection: duplicate(), concurrency: env.WORKER_CONCURRENCY },
 );
 
 const aiWorker = new Worker<AiAnalyseJob>(
   'ai',
-  (job: Job<AiAnalyseJob>) => handleAiAnalyse(job, { ...aiDeps, logger }),
+  (job: Job<AiAnalyseJob>) => handleAiAnalyse(job, { ...aiDeps, logger, gate }),
   // The assistant is the slowest thing the worker does; keep it off the other lanes.
   { connection: duplicate(), concurrency: 2 },
 );
@@ -143,7 +182,7 @@ const analyticsWorker = new Worker<ReportExportJob>(
 
 const slaWorker = new Worker(
   SLA_QUEUE,
-  () => handleSlaScan(engineDeps, automationQueue),
+  () => handleSlaScan(engineDeps, automationQueue, gate),
   // One sweep at a time: the scan is idempotent but there is no reason to overlap it.
   { connection: duplicate(), concurrency: 1 },
 );

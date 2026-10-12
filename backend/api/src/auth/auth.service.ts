@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type {
   AuthenticatedUser,
@@ -11,7 +11,6 @@ import type {
   ResetPasswordInput,
   UpdateUserInput,
 } from '@digisoft/shared';
-import { SYSTEM_ROLES } from '@digisoft/shared';
 import type { TokenType } from '@digisoft/db';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppError } from '../common/errors/app-error';
@@ -19,18 +18,17 @@ import { PasswordService } from './password.service';
 import { TokenService } from './token.service';
 import { AccessControlService } from './access-control.service';
 import { MailerService } from '../email/mailer.service';
-import {
-  DEFAULT_BUSINESS_HOURS,
-  provisionHelpCenter,
-  provisionSlaDefaults,
-  provisionSystemRoles,
-  provisionTicketDefaults,
-} from '@digisoft/db';
+import { AppConfig } from '../config/config.module';
+import { Workeasy360Settings } from '../workeasy360/workeasy360.settings';
+import { provisionOrganization } from './organization-provisioning';
 
 export interface RequestMeta {
   ip: string | null;
   userAgent: string | null;
 }
+
+/** How a session was started; carried by every refresh token of its family. */
+export type SessionMethod = 'PASSWORD' | 'WORKEASY360';
 
 export interface SessionResult extends LoginResponse {
   refreshToken: string;
@@ -56,6 +54,8 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly accessControl: AccessControlService,
     private readonly mailer: MailerService,
+    private readonly config: AppConfig,
+    private readonly workeasy360: Workeasy360Settings,
   ) {}
 
   async register(input: RegisterInput, meta: RequestMeta): Promise<SessionResult> {
@@ -69,65 +69,18 @@ export class AuthService {
 
     const passwordHash = await this.passwords.hash(input.password);
 
-    const { userId, organizationId } = await this.prisma.$transaction(async (tx) => {
-      const organization = await tx.organization.create({
-        data: {
-          name: input.organizationName,
-          slug: input.organizationSlug,
-          timezone: input.timezone,
-        },
-        select: { id: true },
-      });
-
-      const roleIds = await provisionSystemRoles(tx, organization.id);
-      const superAdminRoleId = roleIds[SYSTEM_ROLES.SUPER_ADMIN];
-      if (!superAdminRoleId) {
-        throw new Error('System roles were not provisioned');
-      }
-
-      await tx.businessHours.create({
-        data: {
-          organizationId: organization.id,
-          name: DEFAULT_BUSINESS_HOURS.name,
-          timezone: input.timezone,
-          isDefault: true,
-          weeklySchedule: DEFAULT_BUSINESS_HOURS.weeklySchedule,
-        },
-      });
-
-      await tx.department.create({
-        data: {
-          organizationId: organization.id,
-          name: 'General',
-          description: 'Default department for incoming requests.',
-          isDefault: true,
-        },
-      });
-
-      // Statuses, priorities and categories, so the organization can raise a ticket
-      // the moment registration finishes.
-      await provisionTicketDefaults(tx, organization.id);
-      await provisionSlaDefaults(tx, organization.id);
-      await provisionHelpCenter(tx, organization.id, {
-        name: input.organizationName,
-        slug: input.organizationSlug,
-      });
-
-      const user = await tx.user.create({
-        data: {
-          organizationId: organization.id,
+    const { userId, organizationId } = await this.prisma.$transaction((tx) =>
+      provisionOrganization(
+        tx,
+        { name: input.organizationName, slug: input.organizationSlug, timezone: input.timezone },
+        {
           email: input.email,
           passwordHash,
           firstName: input.firstName,
           lastName: input.lastName,
-          type: 'AGENT',
-          roles: { create: { roleId: superAdminRoleId } },
         },
-        select: { id: true },
-      });
-
-      return { userId: user.id, organizationId: organization.id };
-    });
+      ),
+    );
 
     await this.sendEmailVerification(userId);
     return this.createSession(userId, organizationId, meta);
@@ -217,6 +170,7 @@ export class AuthService {
         userId: true,
         organizationId: true,
         familyId: true,
+        authMethod: true,
         expiresAt: true,
         revokedAt: true,
       },
@@ -253,12 +207,55 @@ export class AuthService {
       }
     }
 
+    if (!audience) {
+      await this.assertAgentSessionMayRefresh(stored);
+    }
+
     await this.prisma.refreshToken.update({
       where: { id: stored.id },
       data: { revokedAt: new Date() },
     });
 
-    return this.createSession(stored.userId, stored.organizationId, meta, stored.familyId);
+    return this.createSession(
+      stored.userId,
+      stored.organizationId,
+      meta,
+      stored.familyId,
+      stored.authMethod === 'WORKEASY360' ? 'WORKEASY360' : 'PASSWORD',
+    );
+  }
+
+  /**
+   * In SSO-only mode an agent session must have been started through Workeasy360, and in an
+   * organization bound to Workeasy360 the user must have a Workeasy360 identity. Anything else
+   * (a password-era family, an account never linked) is refused here, so a refresh cannot mint
+   * tokens for a person who has to sign in with Workeasy360 first. Customers refresh through
+   * the portal (which passes an audience) and are not affected.
+   */
+  private async assertAgentSessionMayRefresh(stored: {
+    userId: string;
+    organizationId: string;
+    authMethod: string;
+  }): Promise<void> {
+    if (!this.workeasy360.ssoOnly) return;
+    const user = await this.prisma.user.findFirst({
+      where: { id: stored.userId, organizationId: stored.organizationId },
+      select: {
+        type: true,
+        organization: { select: { workeasy360OrganizationId: true } },
+        externalIdentities: { select: { id: true }, take: 1 },
+      },
+    });
+    if (!user || user.type !== 'AGENT') return;
+    const bound = user.organization.workeasy360OrganizationId !== null;
+    const linked = user.externalIdentities.length > 0;
+    if (stored.authMethod !== 'WORKEASY360' || (bound && !linked)) {
+      throw new AppError(
+        'WORKEASY360_SIGN_IN_REQUIRED',
+        'Sign in with Workeasy360 to continue.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
   }
 
   async logout(rawToken: string | undefined): Promise<void> {
@@ -288,10 +285,15 @@ export class AuthService {
    * one would strand the others, and asking the caller to choose would reveal which
    * organizations the address belongs to. The response is identical in every case.
    */
-  async forgotPassword(input: ForgotPasswordInput, resetPath = '/reset-password'): Promise<void> {
+  async forgotPassword(
+    input: ForgotPasswordInput,
+    resetPath = '/reset-password',
+    userType: 'AGENT' | 'CUSTOMER' = 'AGENT',
+  ): Promise<void> {
     const users = await this.prisma.user.findMany({
       where: {
         email: input.email,
+        type: userType,
         deletedAt: null,
         isActive: true,
         ...(input.organizationSlug
@@ -331,8 +333,22 @@ export class AuthService {
     }
   }
 
-  async resetPassword(input: ResetPasswordInput): Promise<void> {
-    const record = await this.consumeToken(input.token, ['PASSWORD_RESET', 'INVITE']);
+  /**
+   * `scope` pins the reset to one kind of person in one organization (the help center's
+   * reset page): only a PASSWORD_RESET token of a customer of that organization is accepted,
+   * and anything else looks like an invalid link without being consumed.
+   */
+  async resetPassword(
+    input: ResetPasswordInput,
+    scope?: { organizationId: string; type: 'CUSTOMER' },
+  ): Promise<void> {
+    const record = await this.consumeToken(
+      input.token,
+      scope ? ['PASSWORD_RESET'] : ['PASSWORD_RESET', 'INVITE'],
+    );
+    if (scope && (record.user.organizationId !== scope.organizationId || record.user.type !== scope.type)) {
+      throw AppError.validation('This link is invalid or has expired');
+    }
     const passwordHash = await this.passwords.hash(input.password);
     const isInvite = record.type === 'INVITE';
 
@@ -465,14 +481,30 @@ export class AuthService {
     organizationId: string,
     meta: RequestMeta,
     familyId: string = randomUUID(),
+    method: SessionMethod = 'PASSWORD',
   ): Promise<SessionResult> {
+    const issuer = this.config.get('WORKEASY360_ISSUER');
     const user = await this.prisma.user.findFirst({
       where: { id: userId, organizationId },
-      select: { id: true, email: true, type: true },
+      select: {
+        id: true,
+        email: true,
+        type: true,
+        organization: { select: { workeasy360OrganizationId: true } },
+        externalIdentities: {
+          where: issuer ? { issuer } : {},
+          select: { subject: true },
+          take: 1,
+        },
+      },
     });
     if (!user) {
       throw AppError.unauthenticated();
     }
+    // Bound to Workeasy360: the claims carry what request-time entitlement checks need.
+    const boundTo = user.organization.workeasy360OrganizationId;
+    const subject = user.externalIdentities[0]?.subject;
+    const w360 = boundTo ? { org: boundTo, ...(subject ? { sub: subject } : {}) } : undefined;
 
     const { token: refreshToken, tokenHash } = this.tokens.createRefreshToken();
     const refreshTokenExpiresAt = new Date(Date.now() + this.tokens.refreshTokenTtlMs);
@@ -483,6 +515,7 @@ export class AuthService {
         userId,
         tokenHash,
         familyId,
+        authMethod: method,
         expiresAt: refreshTokenExpiresAt,
         ip: meta.ip,
         userAgent: meta.userAgent,
@@ -494,6 +527,7 @@ export class AuthService {
       org: organizationId,
       email: user.email,
       typ: user.type,
+      ...(w360 ? { w360 } : {}),
     });
 
     await this.accessControl.invalidateUser(organizationId, userId);
@@ -530,7 +564,7 @@ export class AuthService {
         expiresAt: true,
         usedAt: true,
         user: {
-          select: { id: true, email: true, firstName: true, organizationId: true },
+          select: { id: true, email: true, firstName: true, organizationId: true, type: true },
         },
       },
     });

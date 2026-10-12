@@ -6,6 +6,7 @@ import { PrismaClient } from '@digisoft/db';
 import { AppModule } from '../src/app.module';
 import { AppConfig } from '../src/config/config.module';
 import { REDIS_CLIENT } from '../src/redis/redis.module';
+import { applyGlobalPrefix } from '../src/common/app-prefix';
 
 export interface Harness {
   app: INestApplication;
@@ -24,7 +25,7 @@ export async function createHarness(): Promise<Harness> {
 
   const app = moduleRef.createNestApplication();
   const config = app.get(AppConfig);
-  app.setGlobalPrefix(config.get('API_PREFIX'));
+  applyGlobalPrefix(app, config.get('API_PREFIX'));
   app.use(cookieParser());
   await app.init();
 
@@ -65,7 +66,7 @@ export async function resetDatabase(prisma: PrismaClient, redis?: Redis): Promis
       tickets, tags, ticket_categories, ticket_priorities, ticket_statuses,
       audit_logs, notifications, verification_tokens, refresh_tokens,
       team_members, teams, user_departments, departments,
-      user_roles, role_permissions, roles,
+      user_roles, role_permissions, roles, external_identities,
       contacts, accounts, holidays, business_hours, users, organizations
     RESTART IDENTITY CASCADE;
   `);

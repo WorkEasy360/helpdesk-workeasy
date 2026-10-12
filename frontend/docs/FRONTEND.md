@@ -41,8 +41,17 @@ they may see is decided by the API, not by hiding links.
 
 ## `(auth)` — agent sign-in
 ```
-/login  /register  /forgot-password  /reset-password  /verify-email
+/login  /register  /forgot-password  /reset-password  /verify-email  /access-ended
 ```
+
+`/login` offers **Continue with Workeasy360** (a plain link to the API's
+`/api/auth/workeasy360/start`, never an automatic redirect) and the password form according
+to `GET /auth/methods`; `?sso_error=<code>` explains a sign-in that did not complete.
+`middleware.ts` turns the launcher URL `/?organization=<uuid>` into that start route, even
+with a session. `/access-ended?reason=ended|read_only|unverified` is where the API client
+sends a 403 `WORKEASY360_*` code. See `docs/workeasy360-sso.md`.
+
+**Zod and the CSP.** The CSP has no `unsafe-eval`, and Zod 4 probes for string evaluation when the first object schema is created. `lib/zod-config.ts` switches Zod to interpreted mode (`z.config({ jitless: true })`); `@digisoft/shared` resolves (tsconfig paths) to `lib/shared.ts`, which imports that config before re-exporting the byte-identical `shared/` copy, and every frontend file that imports `zod` imports the config first. `e2e/zod-csp.spec.ts` fails when one forgets.
 
 ## Conventions
 - **Server components by default.** Client components only for interactivity (ticket workspace, forms, realtime).
