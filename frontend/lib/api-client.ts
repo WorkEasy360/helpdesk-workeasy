@@ -9,7 +9,12 @@ import axios, {
 } from 'axios';
 import type { ApiFailure, ApiResponse, PageMeta } from '@digisoft/shared';
 import { API_URL } from '@/lib/env';
-import { SIGN_IN_REQUIRED_CODE, SIGN_IN_REQUIRED_PATH, accessRefusalPath } from '@/lib/sso';
+import {
+  SIGN_IN_REQUIRED_PATH,
+  accessRefusalPath,
+  refreshFailureOutcome,
+  type RefreshOutcome,
+} from '@/lib/sso';
 
 const BASE_URL = API_URL;
 
@@ -25,7 +30,7 @@ const BASE_URL = API_URL;
  * when renewal fails.
  */
 let accessToken: string | null = null;
-const refreshPromises = new Map<string, Promise<string | null>>();
+const refreshPromises = new Map<string, Promise<RefreshOutcome>>();
 let onSessionLost: (() => void) | null = null;
 let onPortalSessionLost: (() => void) | null = null;
 /** The help center whose customer session this page runs, if any. */
@@ -92,10 +97,12 @@ function refreshPath(portalSlug: string | null): string {
 }
 
 /**
- * Exchanges the matching refresh cookie for a new access token. Concurrent callers for
- * the same session share one request, since the refresh token rotates on every use.
+ * Exchanges the matching refresh cookie for a new access token and says what happened:
+ * the token, no session at all (401), a session that must sign in with Workeasy360 again,
+ * or "could not tell". Concurrent callers for the same session share one request, since
+ * the refresh token rotates on every use.
  */
-async function refreshAccessToken(options: RefreshOptions = {}): Promise<string | null> {
+async function refreshSession(options: RefreshOptions = {}): Promise<RefreshOutcome> {
   const portalSlug = options.portalSlug === undefined ? activePortalSlug : options.portalSlug;
   const path = refreshPath(portalSlug);
 
@@ -103,26 +110,28 @@ async function refreshAccessToken(options: RefreshOptions = {}): Promise<string 
   if (!pending) {
     pending = axios
       .post<ApiResponse<{ accessToken: string }>>(`${BASE_URL}${path}`, {}, { withCredentials: true })
-      .then((response) => {
+      .then((response): RefreshOutcome => {
         const body = response.data;
         const token = body.success ? body.data.accessToken : null;
         setAccessToken(token);
-        return token;
+        return token ? { kind: 'ok', token } : { kind: 'unavailable' };
       })
-      .catch((error: unknown) => {
+      .catch((error: unknown): RefreshOutcome => {
         setAccessToken(null);
+        const failure = axios.isAxiosError(error)
+          ? refreshFailureOutcome(error.response?.status, error.response?.data?.error?.code)
+          : refreshFailureOutcome(undefined, undefined);
         // SSO-only: this session was started with a password and may not be renewed. Say so on
         // the sign-in page instead of just showing an unexplained form.
         if (
-          axios.isAxiosError(error) &&
-          error.response?.data?.error?.code === SIGN_IN_REQUIRED_CODE &&
+          failure.kind === 'sign_in_required' &&
           typeof window !== 'undefined' &&
           !path.includes('/portal/') &&
           !window.location.pathname.startsWith('/login')
         ) {
           window.location.assign(SIGN_IN_REQUIRED_PATH);
         }
-        return null;
+        return failure;
       })
       .finally(() => {
         refreshPromises.delete(path);
@@ -130,6 +139,12 @@ async function refreshAccessToken(options: RefreshOptions = {}): Promise<string 
     refreshPromises.set(path, pending);
   }
   return pending;
+}
+
+/** The access token a refresh produced, or null when it produced none (for any reason). */
+async function refreshAccessToken(options: RefreshOptions = {}): Promise<string | null> {
+  const outcome = await refreshSession(options);
+  return outcome.kind === 'ok' ? outcome.token : null;
 }
 
 /** `/portal/:slug/...` requests belong to that help center's customer session. */
@@ -245,4 +260,4 @@ function unwrap<T>(body: ApiResponse<T>): T {
   return body.data;
 }
 
-export { refreshAccessToken };
+export { refreshAccessToken, refreshSession };

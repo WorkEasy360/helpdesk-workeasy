@@ -13,6 +13,7 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuthService } from '../auth/auth.service';
 import { TokenService } from '../auth/token.service';
 import { readRefreshCookie, setRefreshCookie } from '../auth/session-cookie';
+import { clearSignedOutMarker } from './signed-out-marker';
 import { FLOW_TTL_SECONDS, FlowStore } from './flow.store';
 import { overLimit } from './rate-limit';
 import { safeNext } from './safe-next';
@@ -23,15 +24,23 @@ import { Workeasy360Settings } from './workeasy360.settings';
 import { EntitlementService } from './entitlement.service';
 
 /**
- * The flow cookie: a random id, scoped to the callback, good for the life of one flow.
+ * The flow cookie: a random id, good for the life of one flow (10 minutes, single use).
  *
- * With COOKIE_SECURE on it is `__Secure-ds_w360_flow`. The stricter `__Host-` prefix would
- * need `Path=/`, and this cookie is deliberately confined to the callback path
- * (`/api/auth/callback`) so it is never sent anywhere else; `__Secure-` still makes a
- * browser refuse to set or accept it over plain http.
+ * Over plain http (development, tests) it is `ds_w360_flow`, confined to the callback path
+ * (`/api/auth/callback`) so it is never sent anywhere else.
+ *
+ * With COOKIE_SECURE on it is `__Host-ds_w360_flow`: Secure, `Path=/`, no Domain. All the
+ * products are siblings under one parent domain, and a compromised sibling can set a
+ * `Domain=.parent` cookie that reaches this origin; `__Secure-` does not stop that. If an
+ * attacker could plant a flow cookie of their own (keyed into Redis) and then send the victim to
+ * the callback with the attacker's code and state, the victim would be signed in as the attacker
+ * - login CSRF past the state check. A browser refuses a `__Host-` cookie that carries a Domain,
+ * so only this exact host can have set it; and only this name is read, so an unprefixed or
+ * `__Secure-` copy is ignored. The price is `Path=/` (the cookie rides along on every request
+ * for its ten minutes), which `__Host-` requires.
  */
 export const FLOW_COOKIE = 'ds_w360_flow';
-export const SECURE_FLOW_COOKIE = `__Secure-${FLOW_COOKIE}`;
+export const SECURE_FLOW_COOKIE = `__Host-${FLOW_COOKIE}`;
 const FLOW_COOKIE_PATH = `/${WORKEASY360_ROUTE_BASE}/callback`;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -185,6 +194,8 @@ export class Workeasy360AuthController {
       );
       await this.entitlements.forgetLink(signedIn.organizationId);
       setRefreshCookie(res, this.config, session.refreshToken, session.refreshTokenExpiresAt);
+      // A real sign-in: the frontend's "signed out in this browser" marker has done its job.
+      clearSignedOutMarker(res, this.config.get('COOKIE_SECURE'));
       this.logger.log({
         msg: 'workeasy360.sign_in',
         organizationId: signedIn.organizationId,
@@ -241,14 +252,15 @@ export class Workeasy360AuthController {
       httpOnly: true,
       secure: this.config.get('COOKIE_SECURE'),
       sameSite: 'lax' as const,
-      path: FLOW_COOKIE_PATH,
+      // `__Host-` demands Path=/ (and no Domain); over http the cookie stays confined to the callback.
+      path: this.config.get('COOKIE_SECURE') ? '/' : FLOW_COOKIE_PATH,
       maxAge,
     };
   }
 
   /** Revokes the family of the refresh cookie this browser presented, if it is one of ours. */
   private async endPresentedSession(req: Request): Promise<void> {
-    const raw = readRefreshCookie(req);
+    const raw = readRefreshCookie(req, this.config);
     if (!raw) return;
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: this.tokens.hashRefreshToken(raw) },

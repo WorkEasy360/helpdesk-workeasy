@@ -112,6 +112,32 @@ export function accessRefusalPath(code: string | undefined, details?: unknown): 
   return isAccessErrorCode(code) ? accessEndedPath(code, details) : null;
 }
 
+/**
+ * What `POST /auth/refresh` told the page about the agent session:
+ * - `ok`: a fresh access token;
+ * - `no_session`: the API answered 401 - there is no refresh cookie, or the session is gone.
+ *   This is the only answer that means "no session at all";
+ * - `sign_in_required`: a password-era session that SSO-only mode refuses (it keeps its
+ *   explanation on the sign-in page);
+ * - `unavailable`: anything else (an outage, a throttle, a body we cannot read): we do not
+ *   know whether a session exists.
+ */
+export type RefreshOutcome =
+  | { kind: 'ok'; token: string }
+  | { kind: 'no_session' }
+  | { kind: 'sign_in_required' }
+  | { kind: 'unavailable' };
+
+/** Classifies a failed refresh by the HTTP status and error code the API answered with. */
+export function refreshFailureOutcome(
+  status: number | undefined,
+  code: string | undefined,
+): Exclude<RefreshOutcome, { kind: 'ok' }> {
+  if (code === SIGN_IN_REQUIRED_CODE) return { kind: 'sign_in_required' };
+  if (status === 401) return { kind: 'no_session' };
+  return { kind: 'unavailable' };
+}
+
 export function isAccessErrorCode(code: string | undefined): code is Workeasy360AccessErrorCode {
   return code !== undefined && Object.prototype.hasOwnProperty.call(ACCESS_ERROR_REASONS, code);
 }

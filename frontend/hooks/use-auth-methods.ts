@@ -11,17 +11,19 @@ export const DEFAULT_AUTH_METHODS: AuthMethods = {
   workeasy360SignOut: false,
 };
 
+/** Shared by the sign-in page and the session bootstrap, which asks before deciding to auto-start. */
+export const authMethodsQuery = {
+  queryKey: ['auth', 'methods'],
+  queryFn: authService.methods,
+  staleTime: 5 * 60_000,
+} as const;
+
 /**
  * Which ways in this deployment offers: the password form, "Continue with Workeasy360", and
  * "Sign out of Workeasy360 too". Fails open to the password form, like the registration flag;
  * the API itself refuses whatever is switched off.
  */
 export function useAuthMethods(): { methods: AuthMethods; isLoading: boolean } {
-  const query = useQuery({
-    queryKey: ['auth', 'methods'],
-    queryFn: authService.methods,
-    staleTime: 5 * 60_000,
-    retry: false,
-  });
+  const query = useQuery({ ...authMethodsQuery, retry: false });
   return { methods: query.data ?? DEFAULT_AUTH_METHODS, isLoading: query.isPending };
 }

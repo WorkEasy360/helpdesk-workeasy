@@ -1475,4 +1475,35 @@ describe('Sign in with Workeasy360 (e2e)', () => {
         .expect(201);
     });
   });
+
+  // --- the frontend's signed-out marker -----------------------------------------------------
+
+  describe('the signed-out marker the frontend keeps (plain http: the unprefixed names)', () => {
+    const markers = (response: request.Response): string[] => setCookies(response).filter((c) => /hd_signed_out=/.test(c));
+
+    it('is expired by a successful sign-in, host-only at Path=/ (the cookie the frontend wrote), and nothing else is touched', async () => {
+      const result = await signIn(owner);
+      expect(result.callback.status).toBe(302);
+      const cleared = markers(result.callback);
+      expect(cleared).toHaveLength(1);
+      expect(cleared[0]).toMatch(/^hd_signed_out=;/);
+      expect(cleared[0]).toContain('Path=/;');
+      expect(cleared[0]).toMatch(/Expires=Thu, 01 Jan 1970/i);
+      expect(cleared[0]).not.toMatch(/Domain=/i);
+      // Over plain http no __Host- cookie is attempted (a browser would refuse it anyway).
+      expect(cleared.some((c) => c.startsWith('__Host-'))).toBe(false);
+    });
+
+    it('is left alone by every refused sign-in', async () => {
+      const result = await signIn(owner, { callbackQuery: () => new URLSearchParams({ error: 'access_denied', state: 'x' }) });
+      expect(result.landing).toBe(loginError('cancelled'));
+      expect(markers(result.callback)).toEqual([]);
+    });
+
+    it('is left alone by a refresh: only a real sign-in clears it', async () => {
+      const { cookie } = await session(owner);
+      const renewed = await refresh(cookie);
+      expect(markers(renewed.response)).toEqual([]);
+    });
+  });
 });

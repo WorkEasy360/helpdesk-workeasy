@@ -100,7 +100,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
-    const raw = readRefreshCookie(req);
+    const raw = readRefreshCookie(req, this.config);
     if (!raw) {
       throw AppError.unauthenticated('No active session', 'TOKEN_EXPIRED');
     }
@@ -115,7 +115,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ loggedOut: true }> {
-    await this.auth.logout(readRefreshCookie(req));
+    await this.auth.logout(readRefreshCookie(req, this.config));
     clearRefreshCookie(res, this.config);
     return { loggedOut: true };
   }

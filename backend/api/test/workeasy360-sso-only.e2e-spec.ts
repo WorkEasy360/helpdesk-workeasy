@@ -18,6 +18,11 @@ const ORG_A = '3f1f6a3e-1f0e-4d6a-9c50-4c0a1c1e0b11';
 const ORG_B = '9a8c7d6e-5f4e-4d3c-8b2a-1a0b9c8d7e6f';
 const apiPath = (path: string): string => `/api/v1${path}`;
 
+// COOKIE_SECURE is on here, so the session and flow cookies are `__Host-` cookies.
+const REFRESH_COOKIE = '__Host-ds_refresh';
+const FLOW_COOKIE = '__Host-ds_w360_flow';
+const COOKIE_DOMAIN = '.example.test';
+
 const owner: Identity = {
   sub: 'sub-owner',
   email: 'owner@acme.example',
@@ -46,7 +51,7 @@ describe('Workeasy360 as the only way in (e2e)', () => {
     const url = new URL(authorization.callbackUrl);
     return request(http)
       .get(`${url.pathname}${url.search}`)
-      .set('Cookie', (pair(started, '__Secure-ds_w360_flow') ?? pair(started, 'ds_w360_flow'))!);
+      .set('Cookie', pair(started, FLOW_COOKIE)!);
   }
 
   const decode = (jwt: string): Record<string, unknown> =>
@@ -57,7 +62,7 @@ describe('Workeasy360 as the only way in (e2e)', () => {
     expect(callback.headers['location']).toBe(`${FRONTEND}/dashboard`);
     const refreshed = await request(http)
       .post(apiPath('/auth/refresh'))
-      .set('Cookie', pair(callback, 'ds_refresh')!)
+      .set('Cookie', pair(callback, REFRESH_COOKIE)!)
       .expect(200);
     return { bearer: { Authorization: `Bearer ${refreshed.body.data.accessToken as string}` } };
   }
@@ -73,6 +78,8 @@ describe('Workeasy360 as the only way in (e2e)', () => {
       WORKEASY360_SSO_ONLY: '1',
       // Secure cookies on: the flow cookie then carries the __Secure- prefix.
       COOKIE_SECURE: 'true',
+      // A parent-domain setting must not leak into the `__Host-` cookies (they can have no Domain).
+      COOKIE_DOMAIN,
       REALTIME_ACCESS_RECHECK_SECONDS: '1',
     });
     helpers = await import('./app.harness');
@@ -274,15 +281,15 @@ describe('Workeasy360 as the only way in (e2e)', () => {
       });
       const auth = harness.app.get(AuthService);
       const session = await auth.createSession(user.id, org.id, { ip: null, userAgent: null });
-      return { org, user, session, auth, cookie: `ds_refresh=${session.refreshToken}`, bearer: { Authorization: `Bearer ${session.accessToken}` } };
+      return { org, user, session, auth, cookie: `${REFRESH_COOKIE}=${session.refreshToken}`, bearer: { Authorization: `Bearer ${session.accessToken}` } };
     }
 
     it('records how a session was started: a Workeasy360 sign-in is tagged, and every refresh keeps the tag', async () => {
       const callback = await signIn(owner);
-      let cookie = pair(callback, 'ds_refresh')!;
+      let cookie = pair(callback, REFRESH_COOKIE)!;
       for (let i = 0; i < 2; i += 1) {
         const renewed = await request(http).post(apiPath('/auth/refresh')).set('Cookie', cookie).expect(200);
-        cookie = pair(renewed, 'ds_refresh')!;
+        cookie = pair(renewed, REFRESH_COOKIE)!;
       }
       const tokens = await harness.prisma.refreshToken.findMany();
       expect(tokens.length).toBe(3);
@@ -322,7 +329,7 @@ describe('Workeasy360 as the only way in (e2e)', () => {
       const session = await old.auth.createSession(old.user.id, old.org.id, { ip: null, userAgent: null }, undefined, 'WORKEASY360');
       await request(http)
         .post(apiPath('/auth/refresh'))
-        .set('Cookie', `ds_refresh=${session.refreshToken}`)
+        .set('Cookie', `${REFRESH_COOKIE}=${session.refreshToken}`)
         .expect(403)
         .expect((r) => expect(r.body.error.code).toBe('WORKEASY360_SIGN_IN_REQUIRED'));
     });
@@ -336,7 +343,7 @@ describe('Workeasy360 as the only way in (e2e)', () => {
       // The link revoked what the password issued...
       await request(http).post(apiPath('/auth/refresh')).set('Cookie', old.cookie).expect(401);
       // ...and the new session is a normal one.
-      const renewed = await request(http).post(apiPath('/auth/refresh')).set('Cookie', pair(callback, 'ds_refresh')!).expect(200);
+      const renewed = await request(http).post(apiPath('/auth/refresh')).set('Cookie', pair(callback, REFRESH_COOKIE)!).expect(200);
       await request(http)
         .get(apiPath('/auth/me'))
         .set('Authorization', `Bearer ${renewed.body.data.accessToken as string}`)
@@ -365,16 +372,150 @@ describe('Workeasy360 as the only way in (e2e)', () => {
 
   // --- the flow cookie --------------------------------------------------------------------
 
+  const setCookiesOf = (response: request.Response): string[] =>
+    (response.headers['set-cookie'] as unknown as string[] | undefined) ?? [];
+  const live = (response: request.Response, name: string): string | undefined =>
+    setCookiesOf(response).find((c) => c.startsWith(`${name}=`) && !c.startsWith(`${name}=;`));
+
   describe('the flow cookie with Secure cookies on', () => {
-    it('is __Secure-prefixed and Secure (not __Host-: it must stay on the callback path)', async () => {
+    it('is a __Host- cookie: Secure, HttpOnly, SameSite=Lax, Path=/ and no Domain (a sibling subdomain cannot plant it)', async () => {
       const started = await request(http).get('/api/auth/workeasy360/start').expect(302);
-      const header = (started.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('__Secure-ds_w360_flow='))!;
+      const header = live(started, '__Host-ds_w360_flow')!;
       expect(header).toBeDefined();
       expect(header).toMatch(/;\s*Secure/i);
       expect(header).toMatch(/HttpOnly/i);
-      expect(header).toContain('Path=/api/auth/callback');
+      expect(header).toMatch(/SameSite=Lax/i);
+      expect(header).toContain('Path=/;');
+      expect(header).not.toContain('Path=/api');
       expect(header).not.toMatch(/Domain=/i);
-      expect((started.headers['set-cookie'] as unknown as string[]).some((c) => c.startsWith('ds_w360_flow='))).toBe(false);
+      // Neither the old __Secure- name nor the plain one is set.
+      expect(setCookiesOf(started).some((c) => c.startsWith('__Secure-ds_w360_flow=') || c.startsWith('ds_w360_flow='))).toBe(false);
+    });
+
+    it('is cleared at the callback with the same attributes (Path=/, Secure, no Domain)', async () => {
+      const callback = await signIn(owner);
+      const cleared = setCookiesOf(callback).find((c) => c.startsWith('__Host-ds_w360_flow=;'))!;
+      expect(cleared).toBeDefined();
+      expect(cleared).toContain('Path=/;');
+      expect(cleared).toMatch(/;\s*Secure/i);
+      expect(cleared).not.toMatch(/Domain=/i);
+      expect(cleared).toMatch(/Expires=Thu, 01 Jan 1970/i);
+    });
+
+    it('is the only name read: a planted copy under another name (the names a sibling subdomain can set) is ignored', async () => {
+      // The attacker starts their own flow in their own browser, then plants its cookie under the
+      // names a sibling subdomain CAN set (Domain=.parent). The victim's callback must not use it.
+      const attackerStart = await request(http).get('/api/auth/workeasy360/start').expect(302);
+      const attackerFlow = pair(attackerStart, FLOW_COOKIE)!.split('=')[1]!;
+      const authorization = provider.authorize(attackerStart.headers['location'] as string, owner);
+      if (!authorization.ok) throw new Error('the provider refused');
+      const url = new URL(authorization.callbackUrl);
+
+      for (const planted of ['__Secure-ds_w360_flow', 'ds_w360_flow']) {
+        const callback = await request(http)
+          .get(`${url.pathname}${url.search}`)
+          .set('Cookie', `${planted}=${attackerFlow}`);
+        expect(callback.status).toBe(302);
+        expect(callback.headers['location']).toBe(`${FRONTEND}/login?sso_error=expired`);
+        expect(live(callback, REFRESH_COOKIE)).toBeUndefined();
+      }
+      expect(await harness.prisma.refreshToken.count()).toBe(0);
+    });
+  });
+
+  // --- the session cookie -----------------------------------------------------------------
+
+  describe('the session cookie with Secure cookies on', () => {
+    it('is a __Host- cookie: Secure, HttpOnly, SameSite=Lax, Path=/ and no Domain, even with COOKIE_DOMAIN set', async () => {
+      const callback = await signIn(owner);
+      const header = live(callback, REFRESH_COOKIE)!;
+      expect(header).toBeDefined();
+      expect(header).toMatch(/;\s*Secure/i);
+      expect(header).toMatch(/HttpOnly/i);
+      expect(header).toMatch(/SameSite=Lax/i);
+      expect(header).toContain('Path=/;');
+      expect(header).not.toContain('Path=/api');
+      expect(header).not.toMatch(/Domain=/i);
+      expect(header).toMatch(/Max-Age=|Expires=/i);
+      // The unprefixed cookie is not set anew, and the ones earlier releases left are expired.
+      expect(live(callback, 'ds_refresh')).toBeUndefined();
+      const expired = setCookiesOf(callback).filter((c) => c.startsWith('ds_refresh=;'));
+      expect(expired.some((c) => c.includes('Path=/api;'))).toBe(true);
+      expect(expired.some((c) => c.includes('Path=/api/v1/auth'))).toBe(true);
+      expect(expired.every((c) => c.includes(`Domain=${COOKIE_DOMAIN}`))).toBe(true);
+    });
+
+    it('is rotated, read and cleared under the new name', async () => {
+      const callback = await signIn(owner);
+      const first = pair(callback, REFRESH_COOKIE)!;
+
+      const renewed = await request(http).post(apiPath('/auth/refresh')).set('Cookie', first).expect(200);
+      const second = pair(renewed, REFRESH_COOKIE)!;
+      expect(second).not.toBe(first);
+      expect(live(renewed, REFRESH_COOKIE)).toContain('Path=/;');
+
+      const out = await request(http).post(apiPath('/auth/logout')).set('Cookie', second).expect(200);
+      const cleared = setCookiesOf(out).find((c) => c.startsWith(`${REFRESH_COOKIE}=;`))!;
+      expect(cleared).toBeDefined();
+      expect(cleared).toContain('Path=/;');
+      expect(cleared).toMatch(/;\s*Secure/i);
+      expect(cleared).not.toMatch(/Domain=/i);
+      // The session really ended.
+      await request(http).post(apiPath('/auth/refresh')).set('Cookie', second).expect(401);
+    });
+
+    it('ignores an unprefixed ds_refresh: a sibling subdomain can plant one, so it is never trusted', async () => {
+      const callback = await signIn(owner);
+      const prefixed = pair(callback, REFRESH_COOKIE)!;
+      const token = prefixed.split('=')[1]!;
+
+      // Only the unprefixed copy (a perfectly valid token, say): no session.
+      await request(http).post(apiPath('/auth/refresh')).set('Cookie', `ds_refresh=${token}`).expect(401);
+
+      // Both: the unprefixed one never wins, whichever order a browser sends them in.
+      const victim = await request(http).post(apiPath('/auth/refresh')).set('Cookie', `ds_refresh=planted; ${prefixed}`).expect(200);
+      const next = pair(victim, REFRESH_COOKIE)!;
+      expect(next).toBeDefined();
+      const reversed = await request(http)
+        .post(apiPath('/auth/refresh'))
+        .set('Cookie', `${next}; ds_refresh=planted`)
+        .expect(200);
+      expect(pair(reversed, REFRESH_COOKIE)).toBeDefined();
+
+      // A sign-out presented only under the unprefixed name ends nothing.
+      const stillLive = pair(reversed, REFRESH_COOKIE)!;
+      await request(http).post(apiPath('/auth/logout')).set('Cookie', `ds_refresh=${stillLive.split('=')[1]!}`).expect(200);
+      await request(http).post(apiPath('/auth/refresh')).set('Cookie', stillLive).expect(200);
+    });
+  });
+
+  // --- the frontend's signed-out marker ---------------------------------------------------
+
+  describe('the signed-out marker the frontend keeps', () => {
+    const markers = (response: request.Response): string[] => setCookiesOf(response).filter((c) => /hd_signed_out=/.test(c));
+
+    it('is expired by a successful sign-in: __Host-, Secure, Path=/, no Domain (and the unprefixed name too)', async () => {
+      const callback = await signIn(owner);
+      const host = markers(callback).find((c) => c.startsWith('__Host-hd_signed_out=;'))!;
+      expect(host).toBeDefined();
+      expect(host).toContain('Path=/;');
+      expect(host).toMatch(/;\s*Secure/i);
+      expect(host).not.toMatch(/Domain=/i);
+      expect(host).toMatch(/Expires=Thu, 01 Jan 1970/i);
+      expect(markers(callback).some((c) => c.startsWith('hd_signed_out=;'))).toBe(true);
+    });
+
+    it('is left alone when the sign-in fails, and by a refresh', async () => {
+      const started = await request(http).get('/api/auth/workeasy360/start').expect(302);
+      const refused = await request(http)
+        .get('/api/auth/callback/workeasy360?error=access_denied&state=x')
+        .set('Cookie', pair(started, FLOW_COOKIE)!);
+      expect(refused.headers['location']).toBe(`${FRONTEND}/login?sso_error=cancelled`);
+      expect(markers(refused)).toEqual([]);
+
+      const callback = await signIn(owner);
+      const renewed = await request(http).post(apiPath('/auth/refresh')).set('Cookie', pair(callback, REFRESH_COOKIE)!).expect(200);
+      expect(markers(renewed)).toEqual([]);
     });
   });
 

@@ -2,7 +2,7 @@
 # Only ${DOMAIN} is substituted; nginx's own $variables pass through untouched.
 #
 # Single hostname: https://${DOMAIN}
-#   /api/...        -> api:4000   REST, auth cookies (path /api), the Workeasy360 sign-in
+#   /api/...        -> api:4000   REST, auth cookies (__Host- cookies at Path=/), the Workeasy360 sign-in
 #                                 routes (/api/auth/...), provider webhooks
 #                                 (/api/v1/webhooks/<channel>/<secret>)
 #   /socket.io/...  -> api:4000   Socket.IO, namespaces /rt (agents) and /chat

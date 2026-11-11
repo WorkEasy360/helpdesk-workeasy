@@ -45,11 +45,17 @@ they may see is decided by the API, not by hiding links.
 ```
 
 `/login` offers **Continue with Workeasy360** (a plain link to the API's
-`/api/auth/workeasy360/start`, never an automatic redirect) and the password form according
-to `GET /auth/methods`; `?sso_error=<code>` explains a sign-in that did not complete.
-`middleware.ts` turns the launcher URL `/?organization=<uuid>` into that start route, even
-with a session. `/access-ended?reason=ended|read_only|unverified` is where the API client
-sends a 403 `WORKEASY360_*` code. See `docs/workeasy360-sso.md`.
+`/api/auth/workeasy360/start`; the page itself never redirects automatically, whatever its
+query) and the password form according to `GET /auth/methods`; `?sso_error=<code>` explains a
+sign-in that did not complete. `middleware.ts` turns the launcher URL
+`/?organization=<uuid>` into that start route, even with a session. When sign-in is
+Workeasy360 only, an agent page opened with no session at all (the refresh answers 401) goes
+straight to that start route with `next=<page>` instead of `/login`: `hooks/use-session.ts`
+asks, `lib/auto-sign-in.ts` decides (SSO-only; not after a sign-out, which both sign-outs
+mark with the `hd_signed_out` session cookie; not within 60 s of the last automatic start,
+the `hd_w360_auto` loop guard). `/access-ended?reason=ended|read_only|unverified` is where the
+API client sends a 403 `WORKEASY360_*` code; a session that exists is never replaced. See
+`docs/workeasy360-sso.md`.
 
 **Zod and the CSP.** The CSP has no `unsafe-eval`, and Zod 4 probes for string evaluation when the first object schema is created. `lib/zod-config.ts` switches Zod to interpreted mode (`z.config({ jitless: true })`); `@digisoft/shared` resolves (tsconfig paths) to `lib/shared.ts`, which imports that config before re-exporting the byte-identical `shared/` copy, and every frontend file that imports `zod` imports the config first. `e2e/zod-csp.spec.ts` fails when one forgets.
 

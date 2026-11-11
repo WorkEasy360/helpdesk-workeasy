@@ -46,8 +46,8 @@ Never commit a real `.env`. It is in `.gitignore`.
 | `JWT_EXPIRES_IN` | no | `15m` | Access token lifetime (`30s`, `15m`, `2h`, `7d`) |
 | `JWT_REFRESH_SECRET` | **yes** | — | ≥ 32 characters, different from `JWT_SECRET`. Also keys the HMAC for refresh, reset and invite tokens — rotating it invalidates all of them |
 | `JWT_REFRESH_EXPIRES_IN_DAYS` | no | `30` | Refresh token lifetime |
-| `COOKIE_SECURE` | no | `false` | **Set to `true` in production** |
-| `COOKIE_DOMAIN` | no | — | e.g. `.digisoft360.com` when the API and frontend share a parent domain |
+| `COOKIE_SECURE` | no | `false` | **Set to `true` in production.** Also switches the agent refresh cookie and the Workeasy360 flow cookie to `__Host-` names (`Path=/`, Secure, no Domain); existing agent sessions sign in again once after the change |
+| `COOKIE_DOMAIN` | no | — | e.g. `.digisoft360.com` when the API and frontend share a parent domain. Applies to the customer help center's cookie; the `__Host-` agent cookies (production) never carry a Domain |
 
 ## Proxy, request limits and registration (added in this hardening pass)
 

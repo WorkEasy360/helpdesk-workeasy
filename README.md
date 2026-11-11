@@ -164,12 +164,12 @@ Backend suites run from `backend/`, the browser suite from `frontend/`.
 | Engine unit (business hours, conditions, blueprints) | 24 | `pnpm --filter @digisoft/engine test` |
 | Channel adapters unit (signatures, parsing, threading hints, encryption) | 67 | `pnpm --filter @digisoft/channels test` |
 | Assistant unit (providers, prompts, parsing, retrieval) | 19 | `pnpm --filter @digisoft/ai test` |
-| API unit (incl. Workeasy360 `next` validation, flow store, entitlement guard, env rules) | 212 | `pnpm --filter @digisoft/api test` |
-| API integration (auth, tenant isolation, RBAC, rate limiting, tickets, ticket access, attachments, activities, operations, knowledge base, portal, community, channels, chat, integrations, assistant, analytics/CSAT, Workeasy360 sign-in against a fake provider, SSO-only, background gating) | 322 | `pnpm --filter @digisoft/api test:e2e` |
+| API unit (incl. Workeasy360 `next` validation, flow store, entitlement guard, env rules, cookie names, request-log redaction) | 244 | `pnpm --filter @digisoft/api test` |
+| API integration (auth, tenant isolation, RBAC, rate limiting, tickets, ticket access, attachments, activities, operations, knowledge base, portal, community, channels, chat, integrations, assistant, analytics/CSAT, Workeasy360 sign-in against a fake provider, SSO-only, background gating, `__Host-` cookies) | 364 | `pnpm --filter @digisoft/api test:e2e` |
 | Analytics unit (ranges, CSV quoting, survey tokens) | 16 | `pnpm --filter @digisoft/analytics test` |
 | Workeasy360 client and entitlement unit (ID token verification, PKCE, JWKS refresh, trust windows, outage rules, background gate) | 94 | `pnpm --filter @digisoft/workeasy360 test` |
 | Worker unit (which processors are gated, the SLA scan) | 29 | `pnpm --filter @digisoft/worker test` |
-| Browser (register, customers, ticket workflow, automation and SLA, help center and community, channels and live chat, assistant, dashboards and reports, Workeasy360 sign-in screens) | 48 | `pnpm test:e2e` (in `frontend/`) |
+| Browser (register, customers, ticket workflow, automation and SLA, help center and community, channels and live chat, assistant, dashboards and reports, Workeasy360 sign-in screens, opening the app directly on an SSO-only deployment) and the rules behind it that need no browser (when a visit starts a sign-in) | 136 | `pnpm test:e2e` (in `frontend/`, against the API with `THROTTLE_ENABLED=false`) |
 
 ## Documentation
 
