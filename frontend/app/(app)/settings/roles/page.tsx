@@ -183,7 +183,7 @@ export default function RolesSettingsPage() {
               </p>
               <div className="flex flex-wrap gap-1">
                 {role.permissions.slice(0, 8).map((entry) => (
-                  <Badge key={entry.permission.key} className="font-mono text-[10px]">
+                  <Badge key={entry.permission.key} className="font-mono text-xs">
                     {entry.permission.key}
                   </Badge>
                 ))}
@@ -209,7 +209,7 @@ export default function RolesSettingsPage() {
           ) : (
             <div className="flex flex-wrap gap-1">
               {permissions.data.map((permission) => (
-                <Badge key={permission.key} variant="outline" className="font-mono text-[10px]">
+                <Badge key={permission.key} variant="outline" className="font-mono text-xs">
                   {permission.key}
                 </Badge>
               ))}
@@ -236,7 +236,7 @@ export default function RolesSettingsPage() {
             </Field>
 
             <fieldset className="space-y-2" disabled={editing?.isSystem ?? false}>
-              <legend className="text-sm font-medium">Permissions</legend>
+              <legend className="text-base font-medium">Permissions</legend>
               {editing?.isSystem ? (
                 <p className="text-xs text-muted-foreground">
                   This is a built-in role, so its permissions cannot be changed. Create a new
@@ -244,11 +244,11 @@ export default function RolesSettingsPage() {
                 </p>
               ) : null}
               {permissions.isPending ? (
-                <p className="text-sm text-muted-foreground">Loading permissions…</p>
+                <p className="text-base text-muted-foreground">Loading permissions…</p>
               ) : (
                 <div className="max-h-64 space-y-1 overflow-y-auto">
                   {permissions.data?.map((permission) => (
-                    <label key={permission.key} className="flex items-center gap-2 text-sm">
+                    <label key={permission.key} className="flex items-center gap-2 text-base">
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-input"
@@ -263,7 +263,7 @@ export default function RolesSettingsPage() {
             </fieldset>
 
             {errors.root ? (
-              <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
                 {errors.root.message}
               </p>
             ) : null}

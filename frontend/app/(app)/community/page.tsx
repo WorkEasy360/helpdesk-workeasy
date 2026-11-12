@@ -159,8 +159,8 @@ export default function CommunityPage() {
                         {topic.status === 'ANSWERED' ? ' · Answered' : ''}
                       </p>
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{topic.category.name}</TD>
-                    <TD className="text-sm text-muted-foreground">
+                    <TD className="text-base text-muted-foreground">{topic.category.name}</TD>
+                    <TD className="text-base text-muted-foreground">
                       {topic.author ? `${topic.author.firstName} ${topic.author.lastName}` : 'Deleted user'}
                     </TD>
                     <TD>
@@ -168,13 +168,13 @@ export default function CommunityPage() {
                         {topic.moderation.charAt(0) + topic.moderation.slice(1).toLowerCase()}
                       </Badge>
                     </TD>
-                    <TD className="text-right text-sm">
+                    <TD className="text-right text-base">
                       <span className="inline-flex items-center gap-1">
                         <MessageSquare className="h-3.5 w-3.5" aria-hidden />
                         {topic.replyCount}
                       </span>
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{formatDateTime(topic.lastActivityAt)}</TD>
+                    <TD className="text-base text-muted-foreground">{formatDateTime(topic.lastActivityAt)}</TD>
                   </TR>
                 ))}
               </TBody>

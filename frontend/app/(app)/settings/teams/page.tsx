@@ -234,7 +234,7 @@ export default function TeamsSettingsPage() {
             </Field>
 
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Members</legend>
+              <legend className="text-base font-medium">Members</legend>
               <label htmlFor="team-members" className="sr-only">
                 Search agents to add
               </label>
@@ -242,7 +242,7 @@ export default function TeamsSettingsPage() {
             </fieldset>
 
             {errors.root ? (
-              <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
                 {errors.root.message}
               </p>
             ) : null}

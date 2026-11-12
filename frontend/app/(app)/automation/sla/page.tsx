@@ -100,12 +100,12 @@ function PolicyDialog({ open, onOpenChange, policy }: { open: boolean; onOpenCha
           <div className="grid gap-4 sm:grid-cols-[1fr_12rem_auto]">
             <Field label="Description" htmlFor="sla-desc"><Input value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
             <Field label="Warn (minutes before due)" htmlFor="sla-warn"><Input type="number" min={0} value={warning} onChange={(e) => setWarning(Number(e.target.value))} /></Field>
-            <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" className="h-4 w-4 rounded border-input" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />Default policy</label>
+            <label className="flex items-end gap-2 pb-2 text-base"><input type="checkbox" className="h-4 w-4 rounded border-input" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />Default policy</label>
           </div>
 
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Targets</h3>
-            <table className="w-full text-sm">
+            <h3 className="text-base font-semibold">Targets</h3>
+            <table className="w-full text-base">
               <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="py-1">Priority</th><th>First response (min)</th><th>Resolution (min)</th><th>Business hours</th><th /></tr></thead>
               <tbody>
                 {targets.map((target, index) => (
@@ -128,10 +128,10 @@ function PolicyDialog({ open, onOpenChange, policy }: { open: boolean; onOpenCha
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Applies to</h3>
+            <h3 className="text-base font-semibold">Applies to</h3>
             <ConditionEditor value={conditions} onChange={setConditions} />
           </section>
-          {error ? <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+          {error ? <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">{error}</p> : null}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -181,7 +181,7 @@ export default function SlaPoliciesPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <table className="w-full text-sm">
+                <table className="w-full text-base">
                   <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="py-1">Priority</th><th>First response</th><th>Resolution</th><th>Clock</th></tr></thead>
                   <tbody>
                     {policy.targets.map((t) => (

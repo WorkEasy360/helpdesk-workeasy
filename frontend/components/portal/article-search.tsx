@@ -52,13 +52,13 @@ export function ArticleSearch({
       {debounced.length >= 2 ? (
         <div className="rounded-md border border-border bg-background">
           {results.isPending ? (
-            <p className="px-3 py-3 text-sm text-muted-foreground">Searching…</p>
+            <p className="px-3 py-3 text-base text-muted-foreground">Searching…</p>
           ) : results.data && results.data.length > 0 ? (
             <ul className="divide-y divide-border">
               {results.data.map((article) => (
                 <li key={article.id}>
-                  <Link className="block px-3 py-2 hover:bg-muted/60" href={`/help/${slug}/kb/${article.slug}`}>
-                    <span className="text-sm font-medium">{article.title}</span>
+                  <Link className="block px-3 py-2 hover:bg-surface-muted" href={`/help/${slug}/kb/${article.slug}`}>
+                    <span className="text-base font-medium">{article.title}</span>
                     {article.summary ? (
                       <span className="block truncate text-xs text-muted-foreground">{article.summary}</span>
                     ) : null}
@@ -67,7 +67,7 @@ export function ArticleSearch({
               ))}
             </ul>
           ) : (
-            <p className="px-3 py-3 text-sm text-muted-foreground">
+            <p className="px-3 py-3 text-base text-muted-foreground">
               Nothing matched “{debounced}”. Raising a request is the next best step.
             </p>
           )}

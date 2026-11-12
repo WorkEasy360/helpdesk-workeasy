@@ -95,7 +95,7 @@ export function RulesPage({ escalation }: { escalation: boolean }) {
         </CardHeader>
         <CardContent className="p-0">
           {runs.isPending ? <TableSkeleton columns={4} rows={3} /> : relevantRuns.length === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground">No runs yet.</p>
+            <p className="p-4 text-base text-muted-foreground">No runs yet.</p>
           ) : (
             <DataTable>
               <THead><TR><TH>When</TH><TH>Rule</TH><TH>Ticket</TH><TH>Result</TH></TR></THead>

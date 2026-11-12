@@ -221,7 +221,7 @@ export default function HelpCenterSettingsPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {TOGGLES.map((toggle) => (
-            <label key={toggle.key} className="flex items-start gap-3 text-sm">
+            <label key={toggle.key} className="flex items-start gap-3 text-base">
               <input
                 type="checkbox"
                 className="mt-0.5 h-4 w-4"
@@ -239,7 +239,7 @@ export default function HelpCenterSettingsPage() {
       </Card>
 
       {error ? (
-        <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
           {error}
         </p>
       ) : null}

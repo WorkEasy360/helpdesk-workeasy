@@ -17,6 +17,7 @@ const SETTINGS_SELECT = {
   intentEnabled: true,
   suggestedReplyEnabled: true,
   autoAnalyse: true,
+  assistantDailyLimit: true,
   monthlyTokenBudget: true,
   promptGuidance: true,
   lastCheckedAt: true,
@@ -74,6 +75,9 @@ export class AiSettingsService {
           ? { suggestedReplyEnabled: input.suggestedReplyEnabled }
           : {}),
         ...(input.autoAnalyse !== undefined ? { autoAnalyse: input.autoAnalyse } : {}),
+        ...(input.assistantDailyLimit !== undefined
+          ? { assistantDailyLimit: input.assistantDailyLimit }
+          : {}),
         ...(input.monthlyTokenBudget !== undefined
           ? { monthlyTokenBudget: input.monthlyTokenBudget }
           : {}),

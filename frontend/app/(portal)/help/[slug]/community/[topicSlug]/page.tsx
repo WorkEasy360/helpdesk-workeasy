@@ -81,7 +81,7 @@ export default function PortalTopicPage({
   return (
     <>
       <Link
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
+        className="inline-flex items-center gap-1 text-base text-muted-foreground hover:underline"
         href={`/help/${slug}/community`}
       >
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
@@ -91,7 +91,7 @@ export default function PortalTopicPage({
       <Card>
         <CardHeader className="flex-row flex-wrap items-start justify-between gap-2 space-y-0">
           <div>
-            <CardTitle className="text-base">{data.title}</CardTitle>
+            <CardTitle className="text-md">{data.title}</CardTitle>
             <p className="text-xs text-muted-foreground">
               {data.category.name} ·{' '}
               {data.author ? `${data.author.firstName} ${data.author.lastName}` : 'Deleted user'} ·{' '}
@@ -119,10 +119,10 @@ export default function PortalTopicPage({
 
       <div className="space-y-3">
         {data.replies.map((item) => (
-          <Card key={item.id} className={item.isAnswer ? 'border-emerald-500' : undefined}>
+          <Card key={item.id} className={item.isAnswer ? 'border-success' : undefined}>
             <CardHeader className="flex-row flex-wrap items-start justify-between gap-2 space-y-0">
               <div>
-                <CardTitle className="text-sm">
+                <CardTitle className="text-base">
                   {item.author ? `${item.author.firstName} ${item.author.lastName}` : 'Deleted user'}
                   {item.author?.type === 'AGENT' ? (
                     <Badge className="ml-2" variant="outline">
@@ -160,11 +160,11 @@ export default function PortalTopicPage({
       </div>
 
       {data.isLocked ? (
-        <p className="text-sm text-muted-foreground">This topic is locked — no new replies.</p>
+        <p className="text-base text-muted-foreground">This topic is locked — no new replies.</p>
       ) : signedIn ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Your reply</CardTitle>
+            <CardTitle className="text-md">Your reply</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <Textarea
@@ -183,7 +183,7 @@ export default function PortalTopicPage({
           </CardContent>
         </Card>
       ) : (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-base text-muted-foreground">
           <Link className="font-medium hover:underline" href={`/help/${slug}/login`}>
             Sign in
           </Link>{' '}

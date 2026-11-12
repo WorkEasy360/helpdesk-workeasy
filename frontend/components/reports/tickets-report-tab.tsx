@@ -45,10 +45,10 @@ export function TicketsReportTab({ query }: { query: Partial<AnalyticsQuery> }) 
           <TrendChart
             data={data.trend}
             series={[
-              { key: 'created', label: 'Created', colour: '#3b82f6' },
-              { key: 'resolved', label: 'Resolved', colour: '#10b981' },
-              { key: 'closed', label: 'Closed', colour: '#6366f1' },
-              { key: 'reopened', label: 'Reopened', colour: '#f59e0b' },
+              { key: 'created', label: 'Created' },
+              { key: 'resolved', label: 'Resolved' },
+              { key: 'closed', label: 'Closed' },
+              { key: 'reopened', label: 'Reopened' },
             ]}
           />
         </CardContent>

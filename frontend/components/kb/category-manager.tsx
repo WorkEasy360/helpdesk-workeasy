@@ -89,7 +89,7 @@ export function CategoryManager({ open, onOpenChange }: { open: boolean; onOpenC
             {categories.data.map((category: KbCategory) => (
               <li key={category.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{category.name}</p>
+                  <p className="truncate text-base font-medium">{category.name}</p>
                   <p className="truncate text-xs text-muted-foreground">
                     /{category.slug} · {VISIBILITY_LABELS[category.visibility]} · {category._count.articles} article(s)
                   </p>
@@ -180,7 +180,7 @@ export function CategoryManager({ open, onOpenChange }: { open: boolean; onOpenC
               />
             </Field>
           </div>
-          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+          {error ? <p role="alert" className="text-base text-destructive">{error}</p> : null}
           <div className="flex justify-end gap-2">
             {draft.id ? (
               <Button type="button" variant="outline" onClick={() => setDraft(emptyDraft)}>

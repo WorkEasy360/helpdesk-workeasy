@@ -79,7 +79,7 @@ export default function ChannelsPage() {
       {webhookUrl ? (
         <Card className="border-primary">
           <CardHeader>
-            <CardTitle className="text-base">Webhook URL</CardTitle>
+            <CardTitle className="text-md">Webhook URL</CardTitle>
             <CardDescription>
               Give this to the provider. It contains the channel secret and is shown only now.
             </CardDescription>
@@ -146,7 +146,7 @@ export default function ChannelsPage() {
                       {channel.identifier ? ` · ${channel.identifier}` : ''}
                     </p>
                   </TD>
-                  <TD className="text-sm text-muted-foreground">
+                  <TD className="text-base text-muted-foreground">
                     {channel.provider}
                     {channel.configuredSecrets.length > 0 ? (
                       <span className="ml-2 inline-flex items-center gap-1 text-xs">
@@ -155,7 +155,7 @@ export default function ChannelsPage() {
                       </span>
                     ) : null}
                   </TD>
-                  <TD className="text-sm text-muted-foreground">
+                  <TD className="text-base text-muted-foreground">
                     {channel.department?.name ?? 'Assignment rules'}
                     {channel.priority ? ` · ${channel.priority.name}` : ''}
                   </TD>
@@ -234,7 +234,7 @@ export default function ChannelsPage() {
       {testTarget ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Send a test message</CardTitle>
+            <CardTitle className="text-md">Send a test message</CardTitle>
             <CardDescription>
               A real message goes out over the channel, so you can see it arrive.
             </CardDescription>
@@ -259,7 +259,7 @@ export default function ChannelsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Recent deliveries</CardTitle>
+          <CardTitle className="text-md">Recent deliveries</CardTitle>
           <CardDescription>Everything providers have posted, and what became of it.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -276,7 +276,7 @@ export default function ChannelsPage() {
               <TBody>
                 {events.data.items.map((event) => (
                   <TR key={event.id}>
-                    <TD className="text-sm">{event.channel.name}</TD>
+                    <TD className="text-base">{event.channel.name}</TD>
                     <TD className="max-w-[18rem] truncate text-xs text-muted-foreground">
                       {event.externalId}
                     </TD>
@@ -300,7 +300,7 @@ export default function ChannelsPage() {
               </TBody>
             </DataTable>
           ) : (
-            <p className="px-4 py-6 text-sm text-muted-foreground">Nothing has arrived yet.</p>
+            <p className="px-4 py-6 text-base text-muted-foreground">Nothing has arrived yet.</p>
           )}
         </CardContent>
       </Card>

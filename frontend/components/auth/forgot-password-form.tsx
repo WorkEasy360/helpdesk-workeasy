@@ -33,7 +33,7 @@ export function ForgotPasswordForm() {
       </CardHeader>
       <CardContent>
         {sent ? (
-          <p className="rounded-md bg-muted px-3 py-4 text-sm">
+          <p className="rounded-md bg-muted px-3 py-4 text-base">
             If that address belongs to an account, a reset link is on its way. The link expires in
             60 minutes.
           </p>
@@ -55,7 +55,7 @@ export function ForgotPasswordForm() {
             </Button>
           </form>
         )}
-        <p className="mt-4 text-sm">
+        <p className="mt-4 text-base">
           <Link href="/login" className="text-muted-foreground hover:text-foreground">
             Back to sign in
           </Link>

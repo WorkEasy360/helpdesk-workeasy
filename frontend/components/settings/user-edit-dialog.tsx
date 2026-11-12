@@ -173,22 +173,22 @@ export function UserEditDialog({ user, onOpenChange }: Props) {
           </Field>
 
           <fieldset className="space-y-2" disabled={!canManageRoles}>
-            <legend className="text-sm font-medium">Roles</legend>
+            <legend className="text-base font-medium">Roles</legend>
             {!canManageRoles ? (
               <p className="text-xs text-muted-foreground">
                 You need the role management permission to change roles.
               </p>
             ) : null}
             {roles.isPending ? (
-              <p className="text-sm text-muted-foreground">Loading roles…</p>
+              <p className="text-base text-muted-foreground">Loading roles…</p>
             ) : roles.isError ? (
-              <p className="text-sm text-destructive">Unable to load roles.</p>
+              <p className="text-base text-destructive">Unable to load roles.</p>
             ) : (
               <div className="max-h-40 space-y-1 overflow-y-auto">
                 {roles.data
                   .filter((role) => role.systemKey !== 'CUSTOMER')
                   .map((role) => (
-                    <label key={role.id} className="flex items-center gap-2 text-sm">
+                    <label key={role.id} className="flex items-center gap-2 text-base">
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-input"
@@ -210,17 +210,17 @@ export function UserEditDialog({ user, onOpenChange }: Props) {
           </fieldset>
 
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Departments</legend>
+            <legend className="text-base font-medium">Departments</legend>
             {departments.isPending ? (
-              <p className="text-sm text-muted-foreground">Loading departments…</p>
+              <p className="text-base text-muted-foreground">Loading departments…</p>
             ) : departments.isError ? (
-              <p className="text-sm text-destructive">Unable to load departments.</p>
+              <p className="text-base text-destructive">Unable to load departments.</p>
             ) : departments.data.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No departments yet.</p>
+              <p className="text-base text-muted-foreground">No departments yet.</p>
             ) : (
               <div className="max-h-40 space-y-1 overflow-y-auto">
                 {departments.data.map((department) => (
-                  <label key={department.id} className="flex items-center gap-2 text-sm">
+                  <label key={department.id} className="flex items-center gap-2 text-base">
                     <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-input"
@@ -241,7 +241,7 @@ export function UserEditDialog({ user, onOpenChange }: Props) {
           {errors.root ? (
             <p
               role="alert"
-              className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive"
             >
               {errors.root.message}
             </p>

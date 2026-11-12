@@ -157,9 +157,29 @@ default and needs nothing. Two existing ones matter to it:
   so the **worker needs the same value** to run auto-analysis against Anthropic.
 - `REDIS_URL` carries the `ai` queue that auto-analysis runs on.
 
-The Anthropic API key is per organization and is entered in the app (Settings →
-Assistant), not in the environment, so two tenants on one deployment bill separately and
-neither key is readable from the API.
+The Anthropic API key **for the per-ticket insights** is per organization and is entered
+in the app (Settings → Assistant), not in the environment, so two tenants on one
+deployment bill separately and neither key is readable from the API.
+
+### The workspace assistant
+
+The conversational assistant — the chat button on every agent page — is different: it is
+a feature of the deployment, so it runs on the operator's own key, from here.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AI_PROVIDER` | `HEURISTIC` | `ANTHROPIC`, `GEMINI`, or `HEURISTIC` for the built-in deterministic provider. Case-insensitive |
+| `AI_MODEL` | per provider | `claude-opus-5` for Anthropic, `gemini-2.5-flash` for Gemini. Leave unset to take the default |
+| `AI_API_KEY` | — | **Required for any provider but `HEURISTIC`.** The API refuses to start without it |
+
+Gemini is called over its REST API with `responseMimeType: application/json`, so the
+model returns the assistant's reply object directly. Thinking is turned off
+(`thinkingBudget: 0`): on 2.5 models thinking tokens count against the output budget, and
+leaving it on can consume the whole allowance and return an empty candidate.
+
+`HEURISTIC` needs nothing: the chat still works, answers from its read-only tools alone,
+and tells the agent it has no model behind it. Nothing about the assistant reads
+`AiSettings`, and nothing about the insights reads these three.
 
 ## Phase 7 — analytics, reporting and CSAT
 

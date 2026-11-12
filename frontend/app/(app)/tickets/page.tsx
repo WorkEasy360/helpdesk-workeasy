@@ -319,22 +319,17 @@ function TicketsView() {
         }
       />
 
-      <nav aria-label="Saved views" className="flex flex-wrap gap-1">
+      <nav aria-label="Saved views" className="c-segmented">
         {VIEWS.map((item) => (
           <button
             key={item.key}
             type="button"
             aria-pressed={view === item.key}
             onClick={() => updateParams({ view: item.key === DEFAULT_VIEW ? null : item.key })}
-            className={`rounded-md px-3 py-1.5 text-sm ${
-              view === item.key
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-muted'
-            }`}
           >
             {item.label}
             {counts[item.key] !== undefined ? (
-              <span className="ml-1.5 tabular-nums opacity-70">{counts[item.key]}</span>
+              <span className="ml-1.5 tabular-nums text-secondary">{counts[item.key]}</span>
             ) : null}
           </button>
         ))}
@@ -444,7 +439,7 @@ function TicketsView() {
             onChange={(event) => updateParams({ createdTo: parseDate(event.target.value) || null })}
           />
         </div>
-        <label className="flex h-9 items-center gap-2 rounded-md border border-input px-3 text-sm">
+        <label className="flex h-9 items-center gap-2 rounded-md border border-input px-3 text-base">
           <input
             type="checkbox"
             className="h-4 w-4 rounded border-input"
@@ -495,7 +490,7 @@ function TicketsView() {
         <div
           role="region"
           aria-label="Bulk actions"
-          className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm"
+          className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-muted px-3 py-2 text-base"
         >
           <span className="font-medium">{selected.size} selected</span>
           {canAssign ? (
@@ -758,7 +753,7 @@ function TicketsView() {
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-1.5">
-              <label htmlFor="bulk-resolution-note" className="text-sm font-medium">
+              <label htmlFor="bulk-resolution-note" className="text-base font-medium">
                 Resolution note
               </label>
               <Textarea

@@ -75,7 +75,7 @@ export default function PortalCommunityPage({ params }: { params: Promise<{ slug
       {composing ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Start a topic</CardTitle>
+            <CardTitle className="text-md">Start a topic</CardTitle>
           </CardHeader>
           <CardContent>
             <form
@@ -119,7 +119,7 @@ export default function PortalCommunityPage({ params }: { params: Promise<{ slug
               <Field label="Details" htmlFor="topic-body" required hint="Markdown works here.">
                 <Textarea rows={5} value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.target.value })} />
               </Field>
-              {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+              {error ? <p role="alert" className="text-base text-destructive">{error}</p> : null}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setComposing(false)}>
                   Cancel

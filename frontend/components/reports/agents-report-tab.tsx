@@ -25,7 +25,7 @@ export function AgentsReportTab({ query }: { query: Partial<AnalyticsQuery> }) {
   }
 
   if (report.data.rows.length === 0) {
-    return <p className="text-sm text-muted-foreground">No agents match this filter.</p>;
+    return <p className="text-base text-muted-foreground">No agents match this filter.</p>;
   }
 
   return (

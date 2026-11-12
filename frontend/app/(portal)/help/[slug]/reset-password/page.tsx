@@ -68,7 +68,7 @@ export default function PortalResetPasswordPage({ params }: { params: Promise<{ 
         </CardHeader>
         <CardContent>
           {done ? (
-            <p className="rounded-md bg-muted px-3 py-4 text-sm">Password updated. Taking you to sign in…</p>
+            <p className="rounded-md bg-muted px-3 py-4 text-base">Password updated. Taking you to sign in…</p>
           ) : (
             <form className="space-y-4" onSubmit={onSubmit} noValidate>
               <Field label="New password" htmlFor="portal-new-password" required>
@@ -88,7 +88,7 @@ export default function PortalResetPasswordPage({ params }: { params: Promise<{ 
                 />
               </Field>
               {error ? (
-                <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
                   {error}
                 </p>
               ) : null}

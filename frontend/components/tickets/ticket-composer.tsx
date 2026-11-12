@@ -82,7 +82,7 @@ export function TicketComposer({ ticketId }: { ticketId: string }) {
 
   if (!canReply && !canComment) {
     return (
-      <p className="border-t border-border p-4 text-sm text-muted-foreground">
+      <p className="border-t border-border p-4 text-base text-muted-foreground">
         Your role does not allow posting on tickets.
       </p>
     );
@@ -94,44 +94,24 @@ export function TicketComposer({ ticketId }: { ticketId: string }) {
     <div
       className={cn(
         'border-t p-3 transition-colors',
-        internal ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30' : 'border-border bg-background',
+        internal ? 'border-warning bg-warning-soft' : 'border-border bg-background',
       )}
     >
-      <div role="tablist" aria-label="Message type" className="mb-2 flex gap-1">
+      <div role="tablist" aria-label="Message type" className="c-segmented mb-2">
         {canReply ? (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'reply'}
-            onClick={() => setMode('reply')}
-            className={cn(
-              'rounded-md px-3 py-1.5 text-sm font-medium',
-              mode === 'reply' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
-            )}
-          >
+          <button type="button" role="tab" aria-selected={mode === 'reply'} onClick={() => setMode('reply')}>
             Reply to customer
           </button>
         ) : null}
         {canComment ? (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={internal}
-            onClick={() => setMode('comment')}
-            className={cn(
-              'rounded-md px-3 py-1.5 text-sm font-medium',
-              internal
-                ? 'bg-amber-500 text-white'
-                : 'text-muted-foreground hover:bg-muted',
-            )}
-          >
+          <button type="button" role="tab" aria-selected={internal} onClick={() => setMode('comment')}>
             Internal comment
           </button>
         ) : null}
       </div>
 
       {internal ? (
-        <p className="mb-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+        <p className="mb-2 text-xs font-medium text-warning-text">
           Only agents can see internal comments. The customer never receives them.
         </p>
       ) : null}
@@ -145,7 +125,7 @@ export function TicketComposer({ ticketId }: { ticketId: string }) {
         value={body}
         onChange={(event) => setBody(event.target.value)}
         placeholder={internal ? 'Add a note for your team…' : 'Write your reply…'}
-        className={cn(internal && 'border-amber-300 focus-visible:ring-amber-500')}
+        className={cn(internal && 'border-warning')}
       />
 
       {pending.length > 0 ? (
@@ -198,10 +178,10 @@ export function TicketComposer({ ticketId }: { ticketId: string }) {
 
         <Button
           type="button"
+          variant={internal ? 'dark' : 'default'}
           onClick={() => send.mutate()}
           loading={send.isPending}
           disabled={body.trim().length === 0}
-          className={cn(internal && 'bg-amber-500 hover:bg-amber-600 text-white')}
         >
           <Send className="h-4 w-4" aria-hidden />
           {internal ? 'Add comment' : 'Send reply'}

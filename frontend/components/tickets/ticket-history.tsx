@@ -64,7 +64,7 @@ export function TicketHistory({ ticketId }: { ticketId: string }) {
   return (
     <ol className="space-y-3 p-4">
       {history.data.items.map((entry) => (
-        <li key={entry.id} className="flex gap-3 text-sm">
+        <li key={entry.id} className="flex gap-3 text-base">
           <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground" aria-hidden />
           <div>
             <p>

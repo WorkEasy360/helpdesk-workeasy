@@ -123,12 +123,12 @@ function ProfileDetails() {
             <Input type="tel" autoComplete="tel" {...form.register('phone')} />
           </Field>
           <div className="space-y-1.5 sm:col-span-2">
-            <p className="text-sm font-medium">Roles</p>
+            <p className="text-base font-medium">Roles</p>
             <div className="flex flex-wrap gap-1">
               {user.roles.length ? (
                 user.roles.map((role) => <Badge key={role}>{role}</Badge>)
               ) : (
-                <span className="text-sm text-muted-foreground">None</span>
+                <span className="text-base text-muted-foreground">None</span>
               )}
             </div>
           </div>

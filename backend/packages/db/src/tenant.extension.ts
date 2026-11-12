@@ -50,6 +50,7 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'ApiKey',
   'AiSettings',
   'AiInsight',
+  'AiUsageDay',
   'CsatSettings',
   'CsatResponse',
   'ReportDefinition',

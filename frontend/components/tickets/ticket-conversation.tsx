@@ -72,27 +72,27 @@ function MessageBubble({ message }: { message: TicketMessage }) {
       className={cn(
         'rounded-lg border p-3',
         internal
-          ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30'
+          ? 'border-warning bg-warning-soft'
           : fromCustomer
-            ? 'border-border bg-muted/50'
+            ? 'border-border bg-surface-muted'
             : 'border-border bg-background',
       )}
     >
       <div className="mb-1.5 flex flex-wrap items-center gap-2">
         <span
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold"
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-semibold"
           aria-hidden
         >
           {initials(authorName(message).charAt(0), authorName(message).split(' ')[1] ?? '')}
         </span>
-        <span className="text-sm font-medium">{authorName(message)}</span>
+        <span className="text-base font-medium">{authorName(message)}</span>
         {internal ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+          <span className="c-badge uppercase tracking-wide" data-tone="warning">
             <Lock className="h-2.5 w-2.5" aria-hidden />
             Internal
           </span>
         ) : (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="c-badge uppercase tracking-wide">
             {fromCustomer ? 'From customer' : 'Public reply'}
           </span>
         )}
@@ -100,7 +100,7 @@ function MessageBubble({ message }: { message: TicketMessage }) {
           {formatDateTime(message.createdAt)}
         </time>
       </div>
-      <p className="whitespace-pre-line text-sm">{message.bodyText}</p>
+      <p className="whitespace-pre-line text-base">{message.bodyText}</p>
       <AttachmentList attachments={message.attachments} />
     </li>
   );
@@ -121,23 +121,23 @@ export function TicketConversation({ ticket }: { ticket: TicketDetail }) {
 
   return (
     <div className="space-y-3 p-4">
-      <article className="rounded-lg border border-border bg-muted/40 p-3">
+      <article className="rounded-lg border border-border bg-surface-muted p-3">
         <div className="mb-1.5 flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium">
+          <span className="text-base font-medium">
             {ticket.contact
               ? `${ticket.contact.firstName} ${ticket.contact.lastName ?? ''}`.trim()
               : (ticket.createdBy &&
                   `${ticket.createdBy.firstName} ${ticket.createdBy.lastName}`) ||
                 'Unknown requester'}
           </span>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Original request · {ticket.source.toLowerCase().replace('_', ' ')}
           </span>
           <time className="ml-auto text-xs text-muted-foreground" dateTime={ticket.createdAt}>
             {formatDateTime(ticket.createdAt)}
           </time>
         </div>
-        <p className="whitespace-pre-line text-sm">{ticket.description}</p>
+        <p className="whitespace-pre-line text-base">{ticket.description}</p>
         {looseFiles.length > 0 ? <AttachmentList attachments={looseFiles} /> : null}
       </article>
 

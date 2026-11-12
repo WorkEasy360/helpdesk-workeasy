@@ -5,15 +5,19 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Check, LogOut, Menu, Monitor, Moon, Sun, UserRound } from 'lucide-react';
+import { Bell, ExternalLink, LogOut, Menu, Settings, UserRound } from 'lucide-react';
+import { PERMISSIONS } from '@digisoft/shared';
 import { authService } from '@/services/auth.service';
 import { notificationsService } from '@/services/notifications.service';
+import { organizationService } from '@/services/settings.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { useUiStore } from '@/stores/ui.store';
 import { initials, formatDateTime, cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
-import { useTheme, type Theme } from '@/components/theme-provider';
+import { CommandSearch } from '@/components/layout/command-search';
+import { ThemeToggle } from '@/components/layout/theme-toggle';
+import { WorkspaceSwitcher } from '@/components/layout/workspace-switcher';
 
 function NotificationsMenu() {
   const router = useRouter();
@@ -77,7 +81,7 @@ function NotificationsMenu() {
         <span className="relative">
           <Bell className="h-4 w-4" aria-hidden />
           {unread?.count ? (
-            <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
+            <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-xs font-medium tabular-nums text-destructive-foreground">
               {unread.count > 9 ? '9+' : unread.count}
             </span>
           ) : null}
@@ -85,13 +89,13 @@ function NotificationsMenu() {
       </Button>
 
       {open ? (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-md border border-border bg-background shadow-lg">
-          <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <p className="text-sm font-medium">Notifications</p>
+        <div className="c-menu absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)]">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-2 pb-2">
+            <p className="text-base font-medium text-foreground">Notifications</p>
             {unread?.count ? (
               <button
                 type="button"
-                className="rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-sm text-xs text-secondary transition-colors hover:text-foreground"
                 onClick={() => markAllRead.mutate()}
               >
                 Mark all read
@@ -101,26 +105,20 @@ function NotificationsMenu() {
 
           <div className="max-h-96 overflow-y-auto">
             {notifications.isPending ? (
-              <div className="p-4">
-                <LoadingState />
-              </div>
+              <LoadingState />
             ) : notifications.isError ? (
-              <div className="p-4">
-                <ErrorState message="Unable to load notifications." onRetry={() => notifications.refetch()} />
-              </div>
+              <ErrorState message="Unable to load notifications." onRetry={() => notifications.refetch()} />
             ) : notifications.data.items.length === 0 ? (
-              <div className="p-4">
-                <EmptyState title="No notifications" description="You're all caught up." />
-              </div>
+              <EmptyState title="No notifications" description="You're all caught up." />
             ) : (
-              <ul className="divide-y divide-border">
+              <ul>
                 {notifications.data.items.map((notification) => (
                   <li key={notification.id}>
                     <button
                       type="button"
                       className={cn(
-                        'block w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-                        !notification.readAt && 'bg-muted/50',
+                        'c-menu-item block w-full text-left',
+                        !notification.readAt && 'bg-accent-soft',
                       )}
                       onClick={() => {
                         if (!notification.readAt) markRead.mutate(notification.id);
@@ -128,17 +126,19 @@ function NotificationsMenu() {
                         if (notification.link) router.push(notification.link);
                       }}
                     >
-                      <span className="flex items-start justify-between gap-2">
-                        <span className="font-medium">{notification.title}</span>
-                        {!notification.readAt ? (
-                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-start justify-between gap-2">
+                          <span className="font-medium text-foreground">{notification.title}</span>
+                          {!notification.readAt ? (
+                            <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent" aria-hidden />
+                          ) : null}
+                        </span>
+                        {notification.body ? (
+                          <span className="mt-0.5 block text-xs text-secondary">{notification.body}</span>
                         ) : null}
-                      </span>
-                      {notification.body ? (
-                        <span className="mt-0.5 block text-xs text-muted-foreground">{notification.body}</span>
-                      ) : null}
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {formatDateTime(notification.createdAt)}
+                        <span className="mt-0.5 block text-xs text-secondary">
+                          {formatDateTime(notification.createdAt)}
+                        </span>
                       </span>
                     </button>
                   </li>
@@ -152,20 +152,34 @@ function NotificationsMenu() {
   );
 }
 
-const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'system', label: 'System', icon: Monitor },
-];
+/** "View help center" — the product action, per docs/DESIGN-SYSTEM.md. */
+function ViewHelpCenter() {
+  const can = useAuthStore((state) => state.can);
+  const organization = useQuery({
+    queryKey: ['organization', 'current'],
+    queryFn: organizationService.current,
+    enabled: can(PERMISSIONS.PORTAL_READ),
+    staleTime: 5 * 60_000,
+  });
 
-const menuItemClass =
-  'flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
+  const slug = organization.data?.slug;
+  if (!slug) return null;
+
+  return (
+    <Button asChild variant="outline" size="sm" className="hidden shell:inline-flex">
+      <a href={`/help/${slug}`} target="_blank" rel="noreferrer">
+        View help center
+        <ExternalLink className="h-4 w-4" aria-hidden />
+      </a>
+    </Button>
+  );
+}
 
 export function Topbar() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { theme, setTheme } = useTheme();
   const user = useAuthStore((state) => state.user);
+  const can = useAuthStore((state) => state.can);
   const clear = useAuthStore((state) => state.clear);
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
   const sidebarOpen = useUiStore((state) => state.sidebarOpen);
@@ -179,12 +193,12 @@ export function Topbar() {
   };
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
+    <header className="c-topbar">
       <Button
         id="sidebar-trigger"
         variant="ghost"
         size="icon"
-        className="lg:hidden"
+        className="shell:hidden"
         onClick={toggleSidebar}
         aria-label="Open navigation"
         aria-controls="app-sidebar"
@@ -193,69 +207,65 @@ export function Topbar() {
         <Menu className="h-4 w-4" aria-hidden />
       </Button>
 
-      <div className="ml-auto flex items-center gap-2">
+      {/* Left: the workspace switcher and search. */}
+      <WorkspaceSwitcher />
+      <div className="min-w-0 flex-1">
+        <CommandSearch />
+      </div>
+
+      {/* Right: product actions, notifications, settings, theme and the account menu. */}
+      <div className="flex shrink-0 items-center gap-1">
+        <ViewHelpCenter />
         <NotificationsMenu />
+        {can(PERMISSIONS.ORGANIZATION_READ) ? (
+          <Button asChild variant="ghost" size="icon" className="hidden shell:inline-flex">
+            <Link href="/settings/organization" aria-label="Settings">
+              <Settings className="h-4 w-4" aria-hidden />
+            </Link>
+          </Button>
+        ) : null}
+        <ThemeToggle />
 
         {user ? (
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button
                 type="button"
-                className="flex items-center gap-2 rounded-md border-l border-border py-1 pl-2 pr-1 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="ml-1 flex items-center gap-2 rounded-md py-1 pl-1 pr-2 text-left transition-colors hover:bg-surface-muted"
                 aria-label={`Account menu for ${user.firstName} ${user.lastName}`}
               >
                 <span
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground"
                   aria-hidden
                 >
                   {initials(user.firstName, user.lastName)}
                 </span>
-                <span className="hidden text-sm leading-tight sm:block">
-                  <span className="block font-medium">
+                <span className="hidden text-base leading-tight sm:block">
+                  <span className="block font-medium text-foreground">
                     {user.firstName} {user.lastName}
                   </span>
-                  <span className="block text-xs text-muted-foreground">{user.roles.join(', ')}</span>
+                  <span className="block text-xs text-secondary">{user.roles.join(', ')}</span>
                 </span>
               </button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
-              <DropdownMenu.Content
-                align="end"
-                sideOffset={6}
-                className="z-50 min-w-52 rounded-md border border-border bg-background p-1 text-foreground shadow-lg"
-              >
+              <DropdownMenu.Content align="end" sideOffset={6} className="c-menu z-50 min-w-52">
                 <DropdownMenu.Label className="px-2 py-1.5">
-                  <p className="truncate text-sm font-medium">
+                  <p className="truncate text-base font-medium text-foreground">
                     {user.firstName} {user.lastName}
                   </p>
-                  <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                  <p className="truncate text-xs text-secondary">{user.email}</p>
                 </DropdownMenu.Label>
-                <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                <DropdownMenu.Item asChild className={menuItemClass}>
+                <DropdownMenu.Separator className="c-menu-separator" />
+                <DropdownMenu.Item asChild className="c-menu-item">
                   <Link href="/settings/profile">
-                    <UserRound className="h-4 w-4" aria-hidden />
+                    <UserRound aria-hidden />
                     Your profile
                   </Link>
                 </DropdownMenu.Item>
-                <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                <DropdownMenu.Label className="px-2 py-1 text-xs text-muted-foreground">Theme</DropdownMenu.Label>
-                <DropdownMenu.RadioGroup value={theme} onValueChange={(value) => setTheme(value as Theme)}>
-                  {THEMES.map((option) => {
-                    const Icon = option.icon;
-                    return (
-                      <DropdownMenu.RadioItem key={option.value} value={option.value} className={menuItemClass}>
-                        <Icon className="h-4 w-4" aria-hidden />
-                        {option.label}
-                        <DropdownMenu.ItemIndicator className="ml-auto">
-                          <Check className="h-4 w-4" aria-hidden />
-                        </DropdownMenu.ItemIndicator>
-                      </DropdownMenu.RadioItem>
-                    );
-                  })}
-                </DropdownMenu.RadioGroup>
-                <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                <DropdownMenu.Item className={menuItemClass} onSelect={() => void signOut()}>
-                  <LogOut className="h-4 w-4" aria-hidden />
+                <DropdownMenu.Separator className="c-menu-separator" />
+                <DropdownMenu.Item className="c-menu-item" onSelect={() => void signOut()}>
+                  <LogOut aria-hidden />
                   Sign out
                 </DropdownMenu.Item>
               </DropdownMenu.Content>

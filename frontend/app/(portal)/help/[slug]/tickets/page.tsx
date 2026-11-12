@@ -48,7 +48,7 @@ export default function MyRequestsPage({ params }: { params: Promise<{ slug: str
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold tracking-tight">My requests</h1>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-base">
             <input
               type="checkbox"
               className="h-4 w-4"

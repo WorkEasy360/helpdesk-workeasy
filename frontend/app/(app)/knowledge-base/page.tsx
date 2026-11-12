@@ -192,17 +192,17 @@ export default function KnowledgeBasePage() {
                         <p className="truncate text-xs text-muted-foreground">{article.summary}</p>
                       ) : null}
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{article.category?.name ?? '—'}</TD>
+                    <TD className="text-base text-muted-foreground">{article.category?.name ?? '—'}</TD>
                     <TD>
                       <Badge variant={article.status === 'PUBLISHED' ? 'success' : 'default'}>
                         {STATUS_LABELS[article.status]}
                       </Badge>
                     </TD>
-                    <TD className="text-right text-sm">{article.viewCount}</TD>
-                    <TD className="text-right text-sm">
+                    <TD className="text-right text-base">{article.viewCount}</TD>
+                    <TD className="text-right text-base">
                       {article.helpfulCount}/{article.helpfulCount + article.notHelpfulCount}
                     </TD>
-                    <TD className="text-sm text-muted-foreground">{formatDateTime(article.updatedAt)}</TD>
+                    <TD className="text-base text-muted-foreground">{formatDateTime(article.updatedAt)}</TD>
                     <TD className="text-right">
                       {manage ? (
                         <Button

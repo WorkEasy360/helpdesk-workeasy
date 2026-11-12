@@ -94,7 +94,7 @@ export function ExportsPanel({
           onRetry={() => exportsList.refetch()}
         />
       ) : exportsList.data.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No exports yet.</p>
+        <p className="text-base text-muted-foreground">No exports yet.</p>
       ) : (
         <DataTable>
           <THead>

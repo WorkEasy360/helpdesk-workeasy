@@ -93,7 +93,7 @@ function ConfigCard({
                     aria-hidden
                   />
                 ) : null}
-                <span className="text-sm font-medium">{row.name}</span>
+                <span className="text-base font-medium">{row.name}</span>
                 {row.badges?.map((badge) => (
                   <Badge key={badge} variant="outline">
                     {badge}

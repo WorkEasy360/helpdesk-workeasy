@@ -85,7 +85,7 @@ function ActionRow({ action, onChange, onRemove }: { action: ActionDraft; onChan
               {agentItems?.map((agent) => {
                 const on = selected.includes(agent.id);
                 return <button key={agent.id} type="button" aria-pressed={on} onClick={() => set({ userIds: on ? selected.filter((id) => id !== agent.id) : [...selected, agent.id] })}
-                  className={`rounded border px-1.5 py-0.5 text-[11px] ${on ? 'border-foreground' : 'border-border text-muted-foreground'}`}>{agent.name}</button>;
+                  className={`rounded border px-1.5 py-0.5 text-xs ${on ? 'border-foreground' : 'border-border text-muted-foreground'}`}>{agent.name}</button>;
               })}
             </div>
             <Input aria-label="Message" value={str('message')} onChange={(e) => set({ message: e.target.value })} placeholder="Message" />

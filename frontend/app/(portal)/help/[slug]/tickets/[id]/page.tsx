@@ -88,7 +88,7 @@ export default function PortalTicketPage({ params }: { params: Promise<{ slug: s
   return (
     <>
       <Link
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
+        className="inline-flex items-center gap-1 text-base text-muted-foreground hover:underline"
         href={`/help/${slug}/tickets`}
       >
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
@@ -98,7 +98,7 @@ export default function PortalTicketPage({ params }: { params: Promise<{ slug: s
       <Card>
         <CardHeader className="flex-row flex-wrap items-start justify-between gap-2 space-y-0">
           <div>
-            <CardTitle className="text-base">
+            <CardTitle className="text-md">
               #{data.ticketNumber} · {data.subject}
             </CardTitle>
             <p className="text-xs text-muted-foreground">
@@ -112,7 +112,7 @@ export default function PortalTicketPage({ params }: { params: Promise<{ slug: s
           </Badge>
         </CardHeader>
         <CardContent>
-          <p className="whitespace-pre-wrap text-sm">{data.description}</p>
+          <p className="whitespace-pre-wrap text-base">{data.description}</p>
         </CardContent>
       </Card>
 
@@ -132,7 +132,7 @@ export default function PortalTicketPage({ params }: { params: Promise<{ slug: s
                 <p className="text-xs text-muted-foreground">
                   {author} · {formatDateTime(message.createdAt)}
                 </p>
-                <p className="whitespace-pre-wrap text-sm">{message.bodyText}</p>
+                <p className="whitespace-pre-wrap text-base">{message.bodyText}</p>
                 {message.attachments.length > 0 ? (
                   <ul className="flex flex-wrap gap-2 pt-1">
                     {message.attachments.map((attachment) => (
@@ -167,7 +167,7 @@ export default function PortalTicketPage({ params }: { params: Promise<{ slug: s
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
+          <CardTitle className="text-md">
             {data.status.isResolved || data.status.isClosed ? 'Still need help?' : 'Add a reply'}
           </CardTitle>
         </CardHeader>

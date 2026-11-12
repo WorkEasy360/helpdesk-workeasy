@@ -82,7 +82,7 @@ export function ResetPasswordForm() {
       </CardHeader>
       <CardContent>
         {done ? (
-          <p className="rounded-md bg-muted px-3 py-4 text-sm">
+          <p className="rounded-md bg-muted px-3 py-4 text-base">
             Password updated. Taking you to sign in…
           </p>
         ) : (
@@ -99,7 +99,7 @@ export function ResetPasswordForm() {
               <Input type="password" autoComplete="new-password" {...register('confirmPassword')} />
             </Field>
             {errors.root ? (
-              <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
                 {errors.root.message}
               </p>
             ) : null}

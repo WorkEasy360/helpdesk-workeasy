@@ -84,7 +84,7 @@ export function SavedReports({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 text-base">
       {forKind.length > 0 ? (
         <Select className="w-48" value={selectedId} onChange={(event) => load(event.target.value)}>
           <option value="">Saved views…</option>

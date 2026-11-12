@@ -79,7 +79,7 @@ export default function ChatInboxPage() {
       <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
         <Card className="h-fit">
           <CardHeader>
-            <CardTitle className="text-base">Conversations</CardTitle>
+            <CardTitle className="text-md">Conversations</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {sessions.isPending ? (
@@ -102,12 +102,12 @@ export default function ChatInboxPage() {
                       type="button"
                       onClick={() => setSelected(session.id)}
                       aria-current={selected === session.id ? 'true' : undefined}
-                      className={`w-full px-3 py-3 text-left transition-colors hover:bg-muted/60 ${
+                      className={`w-full px-3 py-3 text-left transition-colors hover:bg-surface-muted ${
                         selected === session.id ? 'bg-muted' : ''
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium">
+                        <span className="truncate text-base font-medium">
                           {session.visitorName ?? session.visitorEmail ?? 'Visitor'}
                         </span>
                         <Badge
@@ -138,7 +138,7 @@ export default function ChatInboxPage() {
           <Card>
             <CardHeader className="flex-row flex-wrap items-start justify-between gap-2 space-y-0">
               <div>
-                <CardTitle className="text-base">
+                <CardTitle className="text-md">
                   {active.session.visitorName ?? active.session.visitorEmail ?? 'Visitor'}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
@@ -173,14 +173,14 @@ export default function ChatInboxPage() {
                 {active.messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                    className={`max-w-[80%] rounded-lg px-3 py-2 text-base ${
                       message.direction === 'OUTBOUND'
                         ? 'ml-auto bg-primary text-primary-foreground'
                         : 'bg-muted'
                     }`}
                   >
                     <p className="whitespace-pre-wrap">{message.bodyText}</p>
-                    <p className="mt-1 text-[11px] opacity-70">
+                    <p className="mt-1 text-xs opacity-70">
                       {message.authorUser
                         ? `${message.authorUser.firstName} ${message.authorUser.lastName}`
                         : (message.authorContact?.firstName ?? 'Visitor')}{' '}
@@ -189,7 +189,7 @@ export default function ChatInboxPage() {
                   </div>
                 ))}
                 {active.messages.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No messages yet.</p>
+                  <p className="text-base text-muted-foreground">No messages yet.</p>
                 ) : null}
               </div>
 
@@ -213,7 +213,7 @@ export default function ChatInboxPage() {
                   </Button>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-base text-muted-foreground">
                   This chat has ended. The conversation continues on its ticket.
                 </p>
               )}

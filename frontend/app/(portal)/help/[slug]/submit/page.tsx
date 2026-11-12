@@ -49,7 +49,7 @@ function FieldControl({
   }
   if (field.type === 'CHECKBOX') {
     return (
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex items-center gap-2 text-base">
         <input
           id={id}
           type="checkbox"
@@ -134,13 +134,13 @@ export default function SubmitRequestPage({ params }: { params: Promise<{ slug: 
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden />
+          <CardTitle className="flex items-center gap-2 text-md">
+            <CheckCircle2 className="h-5 w-5 text-success" aria-hidden />
             Request received
           </CardTitle>
           <CardDescription>{done.message}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm">
+        <CardContent className="space-y-3 text-base">
           {done.ticketNumber ? <p>Your reference is #{done.ticketNumber}.</p> : null}
           <div className="flex gap-2">
             {session.status === 'signed-in' ? (
@@ -165,7 +165,7 @@ export default function SubmitRequestPage({ params }: { params: Promise<{ slug: 
     <>
       <div className="space-y-3">
         <h1 className="text-lg font-semibold tracking-tight">Submit a request</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-base text-muted-foreground">
           Many questions are already answered in the knowledge base — try a search first.
         </p>
         <ArticleSearch slug={slug} placeholder="Describe your problem in a few words…" />
@@ -192,7 +192,7 @@ export default function SubmitRequestPage({ params }: { params: Promise<{ slug: 
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{active.name}</CardTitle>
+          <CardTitle className="text-md">{active.name}</CardTitle>
           {active.description ? <CardDescription>{active.description}</CardDescription> : null}
         </CardHeader>
         <CardContent>
@@ -219,7 +219,7 @@ export default function SubmitRequestPage({ params }: { params: Promise<{ slug: 
               ))}
 
             {error ? (
-              <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
                 {error}
               </p>
             ) : null}

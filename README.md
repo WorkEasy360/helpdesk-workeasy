@@ -172,6 +172,8 @@ Backend suites run from `backend/`, the browser suite from `frontend/`.
 | [backend/docs/ENVIRONMENT.md](./backend/docs/ENVIRONMENT.md) | Every environment variable |
 | [backend/docs/DEPLOYMENT.md](./backend/docs/DEPLOYMENT.md) | Production topology and go-live checklist |
 | [frontend/docs/FRONTEND.md](./frontend/docs/FRONTEND.md) | Route plan and frontend conventions |
+| [frontend/docs/DESIGN-SYSTEM.md](./frontend/docs/DESIGN-SYSTEM.md) | Tokens, `c-*` components, the shell and the page contract |
+| [backend/docs/AI-ASSISTANT.md](./backend/docs/AI-ASSISTANT.md) | The workspace assistant: its tools, actions, prompt and safety rules |
 | [backend/docs/PHASE-1-PLAN.md](./backend/docs/PHASE-1-PLAN.md) | Phase 1 scope and status |
 | [backend/docs/PHASE-2-PLAN.md](./backend/docs/PHASE-2-PLAN.md) | Phase 2 scope, decisions and status |
 | [backend/docs/PHASE-3-PLAN.md](./backend/docs/PHASE-3-PLAN.md) | Phase 3 scope, decisions and status |

@@ -168,7 +168,7 @@ export function NewTicketDialog({
           </div>
 
           {errors.root ? (
-            <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
               {errors.root.message}
             </p>
           ) : null}

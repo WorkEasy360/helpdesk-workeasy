@@ -84,7 +84,7 @@ function BlueprintDialog({ open, onOpenChange, blueprint }: { open: boolean; onO
           </div>
 
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Transitions</h3>
+            <h3 className="text-base font-semibold">Transitions</h3>
             <ul className="space-y-3">
               {transitions.map((t, index) => (
                 <li key={index} className="space-y-2 rounded-md border border-border p-3">
@@ -122,10 +122,10 @@ function BlueprintDialog({ open, onOpenChange, blueprint }: { open: boolean; onO
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Governs tickets where</h3>
+            <h3 className="text-base font-semibold">Governs tickets where</h3>
             <ConditionEditor value={conditions} onChange={setConditions} />
           </section>
-          {error ? <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+          {error ? <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">{error}</p> : null}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -175,7 +175,7 @@ export default function BlueprintsPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <ol className="space-y-1.5 text-sm">
+                <ol className="space-y-1.5 text-base">
                   {bp.transitions.map((t) => (
                     <li key={t.id} className="flex flex-wrap items-center gap-1.5">
                       <span className="font-medium">{t.name}</span>

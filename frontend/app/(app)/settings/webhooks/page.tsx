@@ -108,7 +108,7 @@ export default function WebhooksPage() {
       {secret ? (
         <Card className="border-primary">
           <CardHeader>
-            <CardTitle className="text-base">Signing secret</CardTitle>
+            <CardTitle className="text-md">Signing secret</CardTitle>
             <CardDescription>
               Verify it against <code>X-Digisoft-Signature</code>: HMAC-SHA256 over
               <code> timestamp.body</code>. Shown only now.
@@ -137,7 +137,7 @@ export default function WebhooksPage() {
       {creating ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">New endpoint</CardTitle>
+            <CardTitle className="text-md">New endpoint</CardTitle>
           </CardHeader>
           <CardContent>
             <form
@@ -160,13 +160,13 @@ export default function WebhooksPage() {
                 </Field>
               </div>
               <fieldset>
-                <legend className="mb-2 text-sm font-medium">Events</legend>
+                <legend className="mb-2 text-base font-medium">Events</legend>
                 <p className="mb-2 text-xs text-muted-foreground">
                   Choose nothing to receive every event.
                 </p>
                 <div className="flex flex-wrap gap-3">
                   {WEBHOOK_EVENTS.map((event) => (
-                    <label key={event} className="flex items-center gap-2 text-sm">
+                    <label key={event} className="flex items-center gap-2 text-base">
                       <input
                         type="checkbox"
                         className="h-4 w-4"
@@ -185,7 +185,7 @@ export default function WebhooksPage() {
                   ))}
                 </div>
               </fieldset>
-              {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+              {error ? <p role="alert" className="text-base text-destructive">{error}</p> : null}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setCreating(false)}>
                   Cancel
@@ -244,7 +244,7 @@ export default function WebhooksPage() {
                       <Badge>Untested</Badge>
                     )}
                   </TD>
-                  <TD className="text-right text-sm">{endpoint._count.deliveries}</TD>
+                  <TD className="text-right text-base">{endpoint._count.deliveries}</TD>
                   <TD className="text-right">
                     {manage ? (
                       <div className="flex justify-end gap-1">
@@ -291,7 +291,7 @@ export default function WebhooksPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Deliveries</CardTitle>
+          <CardTitle className="text-md">Deliveries</CardTitle>
           <CardDescription>Every attempt, with the response it got.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -313,10 +313,10 @@ export default function WebhooksPage() {
                 <TBody>
                   {deliveries.data.items.map((delivery) => (
                     <TR key={delivery.id}>
-                      <TD className="text-sm">
+                      <TD className="text-base">
                         <code className="text-xs">{delivery.event}</code>
                       </TD>
-                      <TD className="text-sm text-muted-foreground">{delivery.endpoint.name}</TD>
+                      <TD className="text-base text-muted-foreground">{delivery.endpoint.name}</TD>
                       <TD>
                         <Badge
                           variant={
@@ -332,7 +332,7 @@ export default function WebhooksPage() {
                           {delivery.responseStatus ? ` · ${delivery.responseStatus}` : ''}
                         </Badge>
                       </TD>
-                      <TD className="text-right text-sm">{delivery.attempts}</TD>
+                      <TD className="text-right text-base">{delivery.attempts}</TD>
                       <TD className="text-xs text-muted-foreground">{formatDateTime(delivery.createdAt)}</TD>
                       <TD className="text-right">
                         {manage && delivery.status !== 'DELIVERED' ? (
@@ -353,7 +353,7 @@ export default function WebhooksPage() {
               <Pagination meta={deliveries.data.meta} onPageChange={setPage} />
             </>
           ) : (
-            <p className="px-4 py-6 text-sm text-muted-foreground">Nothing delivered yet.</p>
+            <p className="px-4 py-6 text-base text-muted-foreground">Nothing delivered yet.</p>
           )}
         </CardContent>
       </Card>

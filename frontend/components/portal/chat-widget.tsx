@@ -171,15 +171,9 @@ export function ChatWidget({ slug }: { slug: string }) {
   return (
     <>
       {open ? (
-        <section
-          aria-label="Live chat"
-          className="fixed bottom-20 right-4 z-40 flex h-[28rem] w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl"
-        >
-          <header
-            className="flex items-center justify-between px-4 py-3 text-white"
-            style={{ backgroundColor: config.data.primaryColor }}
-          >
-            <span className="text-sm font-semibold">{config.data.name}</span>
+        <section aria-label="Live chat" className="c-chatbox bottom-20 h-[28rem]">
+          <header className="c-chatbox-header">
+            <span>{config.data.name}</span>
             <button type="button" onClick={() => setOpen(false)} aria-label="Close chat">
               <X className="h-4 w-4" aria-hidden />
             </button>
@@ -187,7 +181,7 @@ export function ChatWidget({ slug }: { slug: string }) {
 
           {!token ? (
             <form className="flex-1 space-y-3 overflow-y-auto p-4" onSubmit={start}>
-              <p className="text-sm text-muted-foreground">{config.data.greeting}</p>
+              <p className="text-base text-muted-foreground">{config.data.greeting}</p>
               <Input
                 placeholder="Your name"
                 aria-label="Your name"
@@ -210,7 +204,7 @@ export function ChatWidget({ slug }: { slug: string }) {
                 value={draft.message}
                 onChange={(event) => setDraft({ ...draft, message: event.target.value })}
               />
-              {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+              {error ? <p role="alert" className="text-base text-destructive">{error}</p> : null}
               <Button type="submit" className="w-full" loading={busy}>
                 Start chatting
               </Button>
@@ -221,13 +215,13 @@ export function ChatWidget({ slug }: { slug: string }) {
                 {lines.map((line) => (
                   <div
                     key={line.id}
-                    className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                      line.direction === 'INBOUND' ? 'ml-auto bg-muted' : 'bg-primary/10'
+                    className={`max-w-[85%] rounded-lg px-3 py-2 text-base ${
+                      line.direction === 'INBOUND' ? 'ml-auto bg-surface-muted' : 'bg-accent-soft text-accent-strong'
                     }`}
                   >
                     <p className="whitespace-pre-wrap">{line.body}</p>
                     {line.direction === 'OUTBOUND' && line.author ? (
-                      <p className="mt-1 text-[11px] text-muted-foreground">{line.author}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{line.author}</p>
                     ) : null}
                   </div>
                 ))}
@@ -267,10 +261,11 @@ export function ChatWidget({ slug }: { slug: string }) {
         type="button"
         onClick={() => setOpen(!open)}
         aria-label={open ? 'Hide chat' : 'Chat with us'}
-        className="fixed bottom-4 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg transition-transform hover:scale-105"
-        style={{ backgroundColor: config.data.primaryColor }}
+        className="c-fab bottom-4"
       >
-        {open ? <X className="h-5 w-5" aria-hidden /> : <MessageCircle className="h-5 w-5" aria-hidden />}
+        {/* `c-fab-face` rather than a size utility: the launcher sizes its own glyph,
+            and a utility here would win over it. */}
+        {open ? <X className="c-fab-face" aria-hidden /> : <MessageCircle className="c-fab-face" aria-hidden />}
       </button>
     </>
   );

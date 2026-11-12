@@ -15,11 +15,8 @@ export function Pagination({
   const to = Math.min(meta.page * meta.pageSize, meta.total);
 
   return (
-    <nav
-      aria-label="Pagination"
-      className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2 text-sm"
-    >
-      <p className="text-muted-foreground">
+    <nav aria-label="Pagination" className="c-pager">
+      <p className="c-num">
         {from}–{to} of {meta.total}
       </p>
       <div className="flex items-center gap-1">
@@ -32,7 +29,7 @@ export function Pagination({
           <ChevronLeft className="h-4 w-4" aria-hidden />
           Previous
         </Button>
-        <span className="px-2 text-muted-foreground">
+        <span className="c-num px-2">
           Page {meta.page} of {meta.totalPages}
         </span>
         <Button

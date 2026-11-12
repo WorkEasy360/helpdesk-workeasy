@@ -1,52 +1,72 @@
+/**
+ * Base layer and Tailwind's own layers.
+ *
+ * app/layout.tsx imports tokens.css, then components.css, then this file, so the
+ * cascade runs tokens -> `c-*` classes -> Tailwind utilities. A utility on an element
+ * therefore always wins over a `c-*` class.
+ */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 4%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 4%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 46%;
-    --primary: 240 6% 10%;
-    --primary-foreground: 0 0% 98%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 240 5% 34%;
-    color-scheme: light;
-  }
-
-  .dark {
-    --background: 240 10% 4%;
-    --foreground: 0 0% 98%;
-    --card: 240 6% 8%;
-    --card-foreground: 0 0% 98%;
-    --muted: 240 4% 14%;
-    --muted-foreground: 240 5% 65%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 6% 10%;
-    --destructive: 0 63% 45%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 4% 18%;
-    --input: 240 4% 18%;
-    --ring: 240 5% 70%;
-    color-scheme: dark;
-  }
-
   * {
-    @apply border-border;
+    border-color: var(--we-border);
+  }
+
+  html {
+    font-size: 16px;
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    background-color: var(--we-background);
+    color: var(--we-text-body);
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    font-size: var(--we-font-size-base);
+    line-height: var(--we-line-height-base);
+    -webkit-font-smoothing: antialiased;
   }
 
-  /* Keyboard users must always be able to see where they are. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    color: var(--we-text-primary);
+    font-weight: var(--we-font-weight-semibold);
+    line-height: var(--we-line-height-tight);
+  }
+
+  /* Text links are always underlined, so they never rely on colour alone. */
+  a:not([class]) {
+    color: var(--we-link);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* Keyboard users must always be able to see where they are. The sidebar overrides
+     this with a green ring, since it is a navy surface. */
   :focus-visible {
-    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    outline: 2px solid var(--we-focus);
+    outline-offset: 2px;
+  }
+
+  /* Numbers in tables, stats and charts line up column to column. */
+  table,
+  .c-stat-value,
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Nothing animates for someone who asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -37,7 +37,7 @@ export function RouteError({
     >
       <AlertCircle className="h-10 w-10 text-destructive" aria-hidden />
       <h1 className="text-lg font-semibold tracking-tight">Something went wrong</h1>
-      <p className="max-w-md text-sm text-muted-foreground">
+      <p className="max-w-md text-base text-muted-foreground">
         An unexpected error stopped this page from loading. Try again, and if it keeps happening
         contact your administrator.
       </p>

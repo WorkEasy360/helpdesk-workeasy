@@ -1,5 +1,10 @@
-import { cn } from '@/lib/utils';
+import { StatCard } from '@/components/ui/page';
 
+/**
+ * Kept as a thin alias so the report tabs need no change: the design system's
+ * `StatCard` is the one implementation. `tone` only ever reinforces something the
+ * label or `sub` already says, so colour is never the only signal.
+ */
 export function StatTile({
   label,
   value,
@@ -11,22 +16,7 @@ export function StatTile({
   sub?: string;
   tone?: 'default' | 'warning' | 'danger' | 'success';
 }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p
-        className={cn(
-          'mt-1 text-2xl font-semibold tabular-nums',
-          tone === 'warning' && 'text-amber-600 dark:text-amber-400',
-          tone === 'danger' && 'text-red-600 dark:text-red-400',
-          tone === 'success' && 'text-emerald-600 dark:text-emerald-400',
-        )}
-      >
-        {value}
-      </p>
-      {sub ? <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p> : null}
-    </div>
-  );
+  return <StatCard label={label} value={value} sub={sub} tone={tone ?? 'default'} />;
 }
 
 export function formatMinutes(value: number | null): string {

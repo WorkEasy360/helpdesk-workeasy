@@ -50,7 +50,7 @@ function Flag({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label htmlFor={id} className="flex items-start gap-2 text-sm">
+    <label htmlFor={id} className="flex items-start gap-2 text-base">
       <input
         id={id}
         type="checkbox"
@@ -69,7 +69,7 @@ function Flag({
 
 function ErrorLine({ message }: { message: string | null }) {
   return message ? (
-    <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+    <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
       {message}
     </p>
   ) : null;

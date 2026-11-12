@@ -1,8 +1,15 @@
 'use client';
 
+import { CHART_MARKERS, CHART_OTHER, CHART_SERIES, type ChartMarker } from '@/lib/design/tokens';
+
 /**
  * A small inline-SVG line chart. No charting library: the product's own convention is
  * dense, unadorned data, and a handful of trend lines does not earn a dependency.
+ *
+ * Colours come from `--we-chart-1…3` in their fixed order, grid lines from
+ * `--we-border` and the axes from the text tokens — never from the series colour. Each
+ * series also carries a distinct marker shape and a legend label, so the chart reads
+ * without colour. A fourth series folds into "Other". See docs/DESIGN-SYSTEM.md.
  */
 export function TrendChart<T extends { day: string }>({
   data,
@@ -10,11 +17,11 @@ export function TrendChart<T extends { day: string }>({
   height = 160,
 }: {
   data: T[];
-  series: { key: keyof T & string; label: string; colour: string }[];
+  series: { key: keyof T & string; label: string }[];
   height?: number;
 }) {
   if (data.length === 0) {
-    return <p className="text-sm text-muted-foreground">No data in this range.</p>;
+    return <p className="text-base text-secondary">No data in this range.</p>;
   }
 
   const width = 640;
@@ -22,43 +29,65 @@ export function TrendChart<T extends { day: string }>({
   const max = Math.max(1, ...data.flatMap((point) => series.map((s) => Number(point[s.key]) || 0)));
   const stepX = data.length > 1 ? (width - padding * 2) / (data.length - 1) : 0;
   const scaleY = (value: number) => height - padding - (value / max) * (height - padding * 2);
+  const pointsOf = (key: keyof T & string) =>
+    data.map((point, index) => ({
+      x: padding + index * stepX,
+      y: scaleY(Number(point[key]) || 0),
+    }));
 
-  const path = (key: keyof T & string) =>
-    data
-      .map((point, index) => {
-        const x = padding + index * stepX;
-        const y = scaleY(Number(point[key]) || 0);
-        return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(' ');
+  const colourOf = (index: number) => CHART_SERIES[index] ?? CHART_OTHER;
+  const markerOf = (index: number): ChartMarker => CHART_MARKERS[index] ?? 'circle';
 
   // Thin every label out so a 90-day range does not overlap its own tick marks.
   const labelEvery = Math.max(1, Math.ceil(data.length / 8));
 
   return (
-    <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label="Trend over time">
+    <div className="c-chart">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full"
+        role="img"
+        aria-label={`Trend over time: ${series.map((s) => s.label).join(', ')}`}
+      >
         <line
+          className="c-chart-grid"
           x1={padding}
           y1={height - padding}
           x2={width - padding}
           y2={height - padding}
-          className="stroke-border"
-          strokeWidth={1}
         />
-        {series.map((s) => (
-          <path key={s.key} d={path(s.key)} fill="none" stroke={s.colour} strokeWidth={2} />
-        ))}
+        {series.map((s, index) => {
+          const points = pointsOf(s.key);
+          const path = points
+            .map((point, i) => `${i === 0 ? 'M' : 'L'}${point.x.toFixed(1)},${point.y.toFixed(1)}`)
+            .join(' ');
+          const colour = colourOf(index);
+          return (
+            <g key={s.key}>
+              <path d={path} fill="none" stroke={colour} strokeWidth={2} />
+              {/* The marker repeats the series identity without relying on colour. */}
+              {points
+                .filter((_, i) => i % labelEvery === 0 || i === points.length - 1)
+                .map((point, i) => (
+                  <Marker key={i} shape={markerOf(index)} x={point.x} y={point.y} fill={colour} />
+                ))}
+            </g>
+          );
+        })}
       </svg>
-      <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-        {series.map((s) => (
+
+      <div className="c-chart-legend mt-2">
+        {series.map((s, index) => (
           <span key={s.key} className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: s.colour }} aria-hidden />
+            <svg width={10} height={10} viewBox="-5 -5 10 10" aria-hidden>
+              <Marker shape={markerOf(index)} x={0} y={0} fill={colourOf(index)} />
+            </svg>
             {s.label}
           </span>
         ))}
       </div>
-      <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+
+      <div className="c-chart-legend mt-1 justify-between">
         {data
           .filter((_, index) => index % labelEvery === 0 || index === data.length - 1)
           .map((point, index) => (
@@ -69,33 +98,57 @@ export function TrendChart<T extends { day: string }>({
   );
 }
 
+function Marker({
+  shape,
+  x,
+  y,
+  fill,
+}: {
+  shape: ChartMarker;
+  x: number;
+  y: number;
+  fill: string;
+}) {
+  if (shape === 'square') {
+    return <rect x={x - 2.5} y={y - 2.5} width={5} height={5} fill={fill} />;
+  }
+  if (shape === 'triangle') {
+    return <polygon points={`${x},${y - 3} ${x + 3},${y + 2.5} ${x - 3},${y + 2.5}`} fill={fill} />;
+  }
+  if (shape === 'diamond') {
+    return <polygon points={`${x},${y - 3.2} ${x + 3.2},${y} ${x},${y + 3.2} ${x - 3.2},${y}`} fill={fill} />;
+  }
+  return <circle cx={x} cy={y} r={2.5} fill={fill} />;
+}
+
 /** A horizontal bar breakdown — priority, status, channel, department counts. */
 export function BarBreakdown({
   rows,
   colourFor,
 }: {
   rows: { label: string; count: number }[];
+  /** An organization's own status or priority colour, where it has one. */
   colourFor?: (label: string) => string | undefined;
 }) {
   if (rows.length === 0) {
-    return <p className="text-sm text-muted-foreground">Nothing in this range.</p>;
+    return <p className="text-base text-secondary">Nothing in this range.</p>;
   }
   const max = Math.max(1, ...rows.map((row) => row.count));
   return (
-    <ul className="space-y-2">
+    <ul className="c-barlist">
       {rows.map((row) => (
-        <li key={row.label} className="flex items-center gap-2 text-sm">
-          <span className="w-28 shrink-0 truncate text-muted-foreground">{row.label}</span>
-          <span className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+        <li key={row.label}>
+          <span className="c-barlist-label">{row.label}</span>
+          <span className="c-barlist-track">
             <span
-              className="block h-full rounded-full"
+              className="c-barlist-bar"
               style={{
                 width: `${(row.count / max) * 100}%`,
-                backgroundColor: colourFor?.(row.label) ?? 'hsl(var(--primary))',
+                backgroundColor: colourFor?.(row.label),
               }}
             />
           </span>
-          <span className="w-8 shrink-0 text-right tabular-nums">{row.count}</span>
+          <span className="c-barlist-value">{row.count}</span>
         </li>
       ))}
     </ul>

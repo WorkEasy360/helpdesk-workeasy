@@ -70,10 +70,10 @@ export default function TicketWorkspacePage() {
   const data = ticket.data;
 
   return (
-    <div className="-m-4 flex h-[calc(100vh-3.5rem)] lg:-m-6">
+    <div className="flex h-[calc(100vh-var(--we-size-topbar))] min-h-0">
       <aside className="hidden w-72 shrink-0 flex-col border-r border-border xl:flex">
         <div className="border-b border-border px-3 py-2">
-          <Link href="/tickets" className="text-sm font-medium hover:underline">
+          <Link href="/tickets" className="text-base font-medium hover:underline">
             Open tickets
           </Link>
         </div>
@@ -102,7 +102,7 @@ export default function TicketWorkspacePage() {
             </Button>
             <div className="min-w-0 flex-1">
               <p className="text-xs text-muted-foreground">Ticket #{data.ticketNumber}</p>
-              <h1 className="truncate text-base font-semibold">{data.subject}</h1>
+              <h1 className="truncate text-md font-semibold">{data.subject}</h1>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <StatusBadge status={data.status} />
                 <PriorityBadge priority={data.priority} />

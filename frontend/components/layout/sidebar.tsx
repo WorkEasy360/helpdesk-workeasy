@@ -3,65 +3,41 @@
 import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  BarChart3,
-  BookOpen,
-  Building2,
-  ClipboardList,
-  MessageCircle,
-  MessagesSquare,
-  LayoutDashboard,
-  Settings,
-  Ticket,
-  Users,
-  Workflow,
-  X,
-} from 'lucide-react';
-import { PERMISSIONS } from '@digisoft/shared';
+import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { MODULES, MODULE_GROUPS, type AppModule } from '@/lib/modules';
 import { useAuthStore } from '@/stores/auth.store';
 import { useUiStore } from '@/stores/ui.store';
+import { BrandLockup } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: typeof LayoutDashboard;
-  permission?: string;
-}
-
 /**
- * Only shipped areas appear here. Modules from later phases are deliberately absent
- * rather than shown as links that lead nowhere.
+ * The design system's navy sidebar: 248px, the product lockup, then the modules in
+ * groups, with Settings pinned to the bottom. Below 960px it becomes a drawer.
+ *
+ * Every row comes from `lib/modules.tsx`, so a module's label, icon and path cannot
+ * drift between the sidebar, the search and the module's own page.
  */
-const NAV: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/tickets', label: 'Tickets', icon: Ticket, permission: PERMISSIONS.TICKET_READ },
-  { href: '/activities', label: 'Activities', icon: ClipboardList, permission: PERMISSIONS.ACTIVITY_READ },
-  { href: '/customers', label: 'Customers', icon: Users, permission: PERMISSIONS.CONTACT_READ },
-  { href: '/accounts', label: 'Accounts', icon: Building2, permission: PERMISSIONS.ACCOUNT_READ },
-  { href: '/knowledge-base', label: 'Knowledge base', icon: BookOpen, permission: PERMISSIONS.KB_READ },
-  { href: '/community', label: 'Community', icon: MessagesSquare, permission: PERMISSIONS.COMMUNITY_MODERATE },
-  { href: '/chat', label: 'Live chat', icon: MessageCircle, permission: PERMISSIONS.CHAT_HANDLE },
-  { href: '/automation/rules', label: 'Automation', icon: Workflow, permission: PERMISSIONS.OPERATIONS_READ },
-  { href: '/reports', label: 'Reports', icon: BarChart3, permission: PERMISSIONS.REPORT_READ },
-  { href: '/settings/organization', label: 'Settings', icon: Settings, permission: PERMISSIONS.ORGANIZATION_READ },
-];
-
 export function Sidebar() {
   const pathname = usePathname();
   const can = useAuthStore((state) => state.can);
   const sidebarOpen = useUiStore((state) => state.sidebarOpen);
   const setSidebarOpen = useUiStore((state) => state.setSidebarOpen);
 
-  const items = NAV.filter((item) => !item.permission || can(item.permission));
+  const visible = MODULES.filter((module) => !module.permission || can(module.permission));
+  const pinned = visible.filter((module) => module.pinned);
+  const grouped = MODULE_GROUPS.map((group) => ({
+    ...group,
+    modules: visible.filter((module) => module.group === group.id && !module.pinned),
+  })).filter((group) => group.modules.length > 0);
+
   const asideRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
 
   // Mobile drawer behaviour: Escape closes, focus moves in on open, stays inside while
-  // open, and returns to the menu button on close. Desktop never sets `sidebarOpen`
-  // from the trigger (it is hidden at lg), so none of this runs there.
+  // open, and returns to the menu button on close. Above 960px the trigger is hidden,
+  // so none of this runs there.
   useEffect(() => {
     if (!sidebarOpen) {
       if (wasOpen.current) {
@@ -73,7 +49,7 @@ export function Sidebar() {
       }
       return;
     }
-    const desktop = window.matchMedia('(min-width: 1024px)').matches;
+    const desktop = window.matchMedia('(min-width: 960px)').matches;
     if (desktop) return;
     wasOpen.current = true;
     closeRef.current?.focus();
@@ -106,11 +82,30 @@ export function Sidebar() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [sidebarOpen, setSidebarOpen]);
 
+  const NavRow = ({ module }: { module: AppModule }) => {
+    const base = module.path.split('?')[0] ?? module.path;
+    const root = `/${base.split('/')[1] ?? ''}`;
+    // `/settings/roles` should light up Settings, whose path is `/settings/organization`.
+    const active = pathname === base || pathname.startsWith(`${base}/`) || pathname === root || pathname.startsWith(`${root}/`);
+    const Icon = module.icon;
+    return (
+      <Link
+        href={module.path}
+        aria-current={active ? 'page' : undefined}
+        onClick={() => setSidebarOpen(false)}
+        className="c-nav-item"
+      >
+        <Icon aria-hidden />
+        {module.label}
+      </Link>
+    );
+  };
+
   return (
     <>
       {sidebarOpen ? (
         <div
-          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          className="c-scrim fixed inset-0 z-30 shell:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden
         />
@@ -121,21 +116,21 @@ export function Sidebar() {
         ref={asideRef}
         aria-label="Navigation"
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-border bg-card transition-[transform,visibility] lg:visible lg:static lg:translate-x-0',
-          // Below lg a closed drawer is also `invisible`, which removes it from the tab
-          // order and the accessibility tree instead of leaving it merely off-screen.
+          'c-sidebar c-on-primary c-drawer shell:visible shell:static shell:translate-x-0',
+          // Below 960px a closed drawer is also `invisible`, which removes it from the
+          // tab order and the accessibility tree instead of leaving it merely off-screen.
           sidebarOpen ? 'visible translate-x-0' : 'invisible -translate-x-full',
         )}
       >
-        <div className="flex h-14 items-center justify-between border-b border-border px-4">
-          <Link href="/dashboard" className="text-sm font-semibold tracking-tight">
-            Digisoft360 Help Desk
+        <div className="flex h-topbar shrink-0 items-center justify-between gap-2 px-4">
+          <Link href="/dashboard" aria-label="Go to the dashboard" className="min-w-0 rounded-md">
+            <BrandLockup tone="light" />
           </Link>
           <Button
             ref={closeRef}
             variant="ghost"
-            size="icon"
-            className="lg:hidden"
+            size="icon-sm"
+            className="shell:hidden"
             onClick={() => setSidebarOpen(false)}
             aria-label="Close navigation"
           >
@@ -143,32 +138,27 @@ export function Sidebar() {
           </Button>
         </div>
 
-        <nav aria-label="Main" className="flex-1 space-y-0.5 overflow-y-auto p-2">
-          {items.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? 'page' : undefined}
-                onClick={() => setSidebarOpen(false)}
-                className={cn(
-                  'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
-                  active
-                    ? 'bg-muted font-medium text-foreground'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                )}
-              >
-                <Icon className="h-4 w-4" aria-hidden />
-                {item.label}
-              </Link>
-            );
-          })}
+        <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 pb-2">
+          {grouped.map((group) => (
+            <div key={group.id} className="c-nav">
+              <p className="c-nav-group-label">{group.label}</p>
+              {group.modules.map((module) => (
+                <NavRow key={module.key} module={module} />
+              ))}
+            </div>
+          ))}
         </nav>
 
+        {pinned.length > 0 ? (
+          <div className="c-nav border-t border-primary-active px-2 py-2">
+            {pinned.map((module) => (
+              <NavRow key={module.key} module={module} />
+            ))}
+          </div>
+        ) : null}
+
         {process.env.NEXT_PUBLIC_APP_VERSION ? (
-          <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          <p className="px-4 pb-3 text-xs text-primary-nav-muted">
             Version {process.env.NEXT_PUBLIC_APP_VERSION}
           </p>
         ) : null}

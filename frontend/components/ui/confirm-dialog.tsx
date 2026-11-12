@@ -76,7 +76,7 @@ export function ConfirmDialog({
       <DialogContent role="alertdialog" className="max-w-md">
         <DialogHeader className="flex flex-row items-start gap-3 space-y-0 pr-6">
           {destructive ? (
-            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-error-soft text-destructive">
               <AlertTriangle className="h-4 w-4" aria-hidden />
             </span>
           ) : null}

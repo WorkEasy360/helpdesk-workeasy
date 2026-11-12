@@ -72,7 +72,7 @@ export function CsatReportTab({ query }: { query: Partial<AnalyticsQuery> }) {
             <CardContent>
               <ul className="divide-y divide-border">
                 {data.byAgent.map((row) => (
-                  <li key={row.agentId} className="flex items-center justify-between py-2 text-sm">
+                  <li key={row.agentId} className="flex items-center justify-between py-2 text-base">
                     <span>{row.name}</span>
                     <span className="text-muted-foreground">
                       {row.average !== null ? row.average.toFixed(2) : '—'} ({row.responses})
@@ -93,7 +93,7 @@ export function CsatReportTab({ query }: { query: Partial<AnalyticsQuery> }) {
           </CardHeader>
           <CardContent className="space-y-3">
             {data.comments.map((comment) => (
-              <div key={comment.id} className="rounded-md border border-border p-3 text-sm">
+              <div key={comment.id} className="rounded-md border border-border p-3 text-base">
                 <div className="flex items-center justify-between gap-2">
                   <Link href={`/tickets/${comment.ticketId}`} className="font-medium hover:underline">
                     #{comment.ticketNumber} — {comment.subject}

@@ -63,10 +63,10 @@ export function SlaReportTab({ query }: { query: Partial<AnalyticsQuery> }) {
           <TrendChart
             data={data.trend}
             series={[
-              { key: 'firstResponseMet', label: 'First response met', colour: '#10b981' },
-              { key: 'firstResponseBreached', label: 'First response breached', colour: '#ef4444' },
-              { key: 'resolutionMet', label: 'Resolution met', colour: '#3b82f6' },
-              { key: 'resolutionBreached', label: 'Resolution breached', colour: '#f97316' },
+              { key: 'firstResponseMet', label: 'First response met' },
+              { key: 'firstResponseBreached', label: 'First response breached' },
+              { key: 'resolutionMet', label: 'Resolution met' },
+              { key: 'resolutionBreached', label: 'Resolution breached' },
             ]}
           />
         </CardContent>

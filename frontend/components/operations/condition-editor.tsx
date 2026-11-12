@@ -88,7 +88,7 @@ function LeafRow({ leaf, onChange, onRemove, options }: { leaf: ConditionLeafDto
               const on = selected.includes(option.id);
               return (
                 <button key={option.id} type="button" aria-pressed={on} onClick={() => onChange({ ...leaf, value: on ? selected.filter((id) => id !== option.id) : [...selected, option.id] })}
-                  className={`rounded border px-1.5 py-0.5 text-[11px] ${on ? 'border-foreground' : 'border-border text-muted-foreground'}`}>
+                  className={`rounded border px-1.5 py-0.5 text-xs ${on ? 'border-foreground' : 'border-border text-muted-foreground'}`}>
                   {option.name}
                 </button>
               );

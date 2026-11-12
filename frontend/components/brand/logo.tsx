@@ -1,0 +1,69 @@
+/**
+ * The product's name and mark. These two constants are the only place the visible
+ * product name is written — the sidebar, the sign-in screen, the page titles and the
+ * help-center footer all read them.
+ *
+ * Technical identifiers are deliberately not derived from these: the `@digisoft/shared`
+ * package, the `digisoft-theme` storage key, the npm package name and every API route
+ * stay as they are, so nothing that already exists breaks.
+ */
+export const BRAND_NAME = 'Workeasy';
+export const PRODUCT_NAME = 'Helpdesk';
+
+/** "Workeasy Helpdesk" — for page titles, metadata and plain-text contexts. */
+export const FULL_PRODUCT_NAME = `${BRAND_NAME} ${PRODUCT_NAME}`;
+
+/**
+ * The mark, traced from `public/brand/logo.jpg` — the original logo artwork. It is a
+ * single flat colour, so the trace matches it to within 0.4% of pixels and scales to
+ * any size.
+ *
+ * It is always the logo green. That green is for the mark and the favicons only, never
+ * for UI: the interface greens are `--we-accent` and `--we-accent-strong`. Filled
+ * even-odd so the counters inside the ring stay open.
+ */
+export function BrandMark({ className, title }: { className?: string; title?: string }) {
+  return (
+    <svg
+      viewBox="0 0 512 512"
+      className={className}
+      role={title ? 'img' : undefined}
+      aria-hidden={title ? undefined : true}
+      aria-label={title}
+    >
+      <path fill="var(--we-brand-logo)" fillRule="evenodd" d="M258.18,27.45L284.55,28.03L310.36,31.67L336.91,38.66L366,50.32L382,58.65L395.09,66.66L417.64,83.66L439.98,105.64L452.18,120.44L454.42,123.82L454,124.79L436.18,129.2L421.27,135.72L409.17,143.45L396.91,154.11L382,138.93L362.83,123.09L343.82,111.02L324.18,101.93L302,95.02L280.55,91.3L259.09,90.55L241.27,92.03L221.64,95.75L195.09,104.11L173.27,114.29L154,126.29L138.36,138.57L124.75,151.45L111.45,167.35L97.27,188.58L83.09,186.91L26.55,186L30.68,175.09L40.84,155.09L52.47,136.55L64.38,120.91L76,107.82L91.09,93.47L117.27,73.56L132.91,63.75L151.09,54.1L167.09,47.02L190.73,38.66L225.64,30.58L246,28.03L258.18,27.45ZM451.27,142L462.36,141.82L471.45,143.39L482,147.36L492.91,154.57L500.18,162.26L506.26,171.82L509.7,180.55L512,192.18L511.97,202.73L508.98,215.45L503.53,226.73L495.98,236.55L488.65,243.09L479.45,248.61L469.64,252.25L455.82,254.54L444.55,253.79L437.64,252.25L428.18,248.59L418.73,242.53L411.66,235.45L405.93,227.09L401.57,217.64L398.55,205.27L398.58,194L400.48,184.91L405.56,172.91L412.38,162.73L419.82,155.29L430.73,148.14L439.45,144.48L451.27,142ZM22.55,206L78.73,206.19L91.82,208.12L99.45,210.66L109.74,216.18L119.64,224.91L125.71,232.55L168.59,313.27L226.43,427.45L226.9,432.18L226.06,435.82L220.71,443.45L208.36,456.91L194.73,467.53L182.73,474.07L168.55,478.88L153.27,480.36L140.91,478.43L128.91,474.05L114.73,465.43L101.84,453.64L91.38,439.82L80.86,421.64L67.92,395.45L11.02,269.64L3.75,251.09L0,234.73L0.03,227.45L2.32,219.82L6.2,214L11.09,209.93L15.45,207.75L22.55,206ZM169.09,207.09L214.73,206.91L241.64,208.03L249.27,209.57L260.18,213.37L268.18,217.56L277.45,224.55L286.44,235.09L304.98,268.18L368.86,392.91L377.56,407.82L388.18,420.63L396.44,427.82L409.64,436.28L424.18,442.3L424.18,443.99L408.29,457.27L389.27,469.37L367.82,478.79L356.18,482.07L345.64,483.97L337.27,484.72L323.82,484.33L305.27,480.61L288.91,473.35L275.37,463.45L261.64,447.92L250.32,429.27L152.84,234L151.67,229.64L151.67,223.82L154.29,216.55L157.1,212.91L160.91,209.93L169.09,207.09ZM503.05,252.18L503.94,252.55L504.7,258.73L504.72,273.27L502.88,291.09L499.24,311.45L494.43,330.73L489.34,346.36L482.8,362.73L474.99,378.73L467.53,391.82L457.27,407.19L439.09,428.98L435.45,429.79L429.27,428.25L413.27,421.54L404.18,415.62L393.84,406L387.02,396.91L378.59,382L390.16,369.27L399.82,357.01L408.62,343.82L416.23,330L423.16,314L427.88,299.82L433.64,270.86L454,272L462,271.24L472.18,268.98L486.73,263.14L503.05,252.18Z" />
+    </svg>
+  );
+}
+
+/**
+ * The full lockup: the mark, then the brand name with the product name beneath it.
+ * `tone="light"` is for navy surfaces — the sidebar and the mobile drawer.
+ */
+export function BrandLockup({
+  tone = 'dark',
+  className,
+}: {
+  tone?: 'dark' | 'light';
+  className?: string;
+}) {
+  const light = tone === 'light';
+  return (
+    <span className={`flex items-center gap-2 ${className ?? ''}`}>
+      {/* 28px rather than the 18px icon size: this mark carries real detail. */}
+      <BrandMark className="h-7 w-7 shrink-0" />
+      <span className="leading-tight">
+        <span
+          className={`block text-base font-semibold tracking-tight ${
+            light ? 'text-primary-foreground' : 'text-foreground'
+          }`}
+        >
+          {BRAND_NAME}
+        </span>
+        <span className={`block text-xs ${light ? 'text-primary-nav-muted' : 'text-secondary'}`}>
+          {PRODUCT_NAME}
+        </span>
+      </span>
+    </span>
+  );
+}

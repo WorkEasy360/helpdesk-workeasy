@@ -94,6 +94,27 @@ export const envSchema = z.object({
    * before a channel can store credentials; generate with `openssl rand -base64 32`.
    */
   CHANNEL_ENCRYPTION_KEY: optionalString,
+
+  /**
+   * The workspace assistant's model, for the whole deployment.
+   *
+   * Deliberately *not* the per-organization `AiSettings` row: those stay the source for
+   * the per-ticket insights, where each tenant bills its own Anthropic account. The
+   * assistant is a product feature of the deployment, so it runs on the operator's key.
+   *
+   * `HEURISTIC` is the default and needs nothing: the chat still works, answering from
+   * the tools alone, and says so. `ANTHROPIC` requires `AI_API_KEY`, and the API refuses
+   * to start without it rather than failing on the first question.
+   */
+  AI_PROVIDER: z
+    .preprocess(
+      (v) => (typeof v === 'string' ? v.trim().toUpperCase() : v),
+      z.enum(['ANTHROPIC', 'GEMINI', 'HEURISTIC']),
+    )
+    .default('HEURISTIC'),
+  // Optional: left unset, each provider falls back to its own default model.
+  AI_MODEL: optionalString,
+  AI_API_KEY: optionalString,
   /** Public base URL providers post webhooks to; defaults to BACKEND_URL. */
   PUBLIC_API_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
   /** Retry budget for one outbound webhook delivery before it is marked failed. */
@@ -170,6 +191,13 @@ export function validateEnv(raw: Record<string, unknown>): Env {
       .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);
+  }
+  if (parsed.data.AI_PROVIDER !== 'HEURISTIC' && !parsed.data.AI_API_KEY) {
+    throw new Error(
+      'Invalid environment configuration:\n' +
+        `  - AI_API_KEY: required when AI_PROVIDER=${parsed.data.AI_PROVIDER}. Leave ` +
+        'AI_PROVIDER unset (or set it to HEURISTIC) to run the assistant without a model.',
+    );
   }
   const unsafe = productionIssues(parsed.data);
   if (unsafe.length > 0) {

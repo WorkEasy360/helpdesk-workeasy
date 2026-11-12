@@ -98,6 +98,7 @@ model Organization {
   apiKeys             ApiKey[]
   aiSettings          AiSettings?
   aiInsights          AiInsight[]
+  aiUsageDays         AiUsageDay[]
   csatSettings        CsatSettings?
   csatResponses       CsatResponse[]
   reportDefinitions   ReportDefinition[]
@@ -1605,6 +1606,9 @@ model AiSettings {
   suggestedReplyEnabled Boolean        @default(true)
   /// Generate summary, sentiment and intent as tickets arrive, not only on demand.
   autoAnalyse           Boolean        @default(true)
+  /// Questions the whole organization may ask the workspace assistant per day. The
+  /// assistant itself is always on — this is a spend guard, not a switch. 0 = no limit.
+  assistantDailyLimit   Int            @default(200)
   /// Hard ceiling on spend per calendar month; 0 means no limit.
   monthlyTokenBudget    Int            @default(0)
   /// Extra instructions folded into every prompt (tone, product names, languages).
@@ -1617,6 +1621,27 @@ model AiSettings {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("ai_settings")
+}
+
+/// One row per organization per day, holding the counters a daily allowance is taken
+/// from. Separate from AiInsight because the assistant's questions are not insights and
+/// because taking an allowance must be a single cheap upsert, not an aggregate.
+model AiUsageDay {
+  id             String   @id @default(cuid())
+  organizationId String
+  /// The UTC day this row counts, at midnight.
+  day            DateTime @db.Date
+  /// Assistant questions asked today. Incremented before the model is called, so a
+  /// failed answer still costs its question and a burst cannot slip past the limit.
+  assistantMessages Int   @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, day])
+  @@index([organizationId, day])
+  @@map("ai_usage_days")
 }
 
 /// A generated insight. Kept per ticket and type so the newest supersedes the last

@@ -46,7 +46,7 @@ export function ActivityList({ activities, showTicket = true }: { activities: Ac
           <li key={activity.id} className="flex items-start gap-3 px-3 py-2.5">
             <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             <div className="min-w-0 flex-1">
-              <p className={cn('text-sm font-medium', activity.status !== 'OPEN' && 'text-muted-foreground line-through')}>{activity.subject}</p>
+              <p className={cn('text-base font-medium', activity.status !== 'OPEN' && 'text-muted-foreground line-through')}>{activity.subject}</p>
               <p className="text-xs text-muted-foreground">
                 {activity.type === 'CALL' && activity.callDirection ? `${activity.callDirection.toLowerCase()} · ` : ''}
                 {activity.type === 'CALL' && activity.callDurationSeconds != null ? `${Math.round(activity.callDurationSeconds / 60)} min · ` : ''}

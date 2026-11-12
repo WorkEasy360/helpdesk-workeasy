@@ -48,18 +48,16 @@ export default function ActivitiesPage() {
         actions={can(PERMISSIONS.ACTIVITY_CREATE) ? <Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4" aria-hidden />New activity</Button> : null}
       />
       <div className="flex flex-wrap items-center gap-2">
-        <nav aria-label="Views" className="flex gap-1">
+        <nav aria-label="Views" className="c-segmented">
           {(['open', 'mine', 'overdue', 'all'] as View[]).map((item) => (
-            <button key={item} type="button" aria-pressed={view === item} onClick={() => { setView(item); setPage(1); }}
-              className={`rounded-md px-3 py-1.5 text-sm ${view === item ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>
+            <button key={item} type="button" aria-pressed={view === item} onClick={() => { setView(item); setPage(1); }}>
               {item === 'mine' ? 'Assigned to me' : item.charAt(0).toUpperCase() + item.slice(1)}
             </button>
           ))}
         </nav>
-        <nav aria-label="Type" className="ml-auto flex gap-1">
+        <nav aria-label="Type" className="c-segmented ml-auto">
           {(['ALL', 'TASK', 'CALL', 'EVENT'] as Kind[]).map((item) => (
-            <button key={item} type="button" aria-pressed={kind === item} onClick={() => { setKind(item); setPage(1); }}
-              className={`rounded-md px-2.5 py-1 text-xs ${kind === item ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted'}`}>
+            <button key={item} type="button" aria-pressed={kind === item} onClick={() => { setKind(item); setPage(1); }}>
               {item === 'ALL' ? 'All types' : item.charAt(0) + item.slice(1).toLowerCase() + 's'}
             </button>
           ))}
