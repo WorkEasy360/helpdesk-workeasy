@@ -196,6 +196,17 @@ export class AuthService {
       throw AppError.unauthenticated('Session has expired', 'TOKEN_EXPIRED');
     }
 
+    if (stored.authMethod === 'WORKEASY360' && (await this.endedByWorkeasy360(stored.familyId))) {
+      // Workeasy360 ended the sign-in that opened this session (back-channel logout). A token
+      // rotated, or a session issued, while that logout was being processed must not carry the
+      // session past it.
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: stored.userId, familyId: stored.familyId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      throw AppError.unauthenticated('Session has ended', 'TOKEN_EXPIRED');
+    }
+
     if (audience) {
       const owner = await this.prisma.user.findUnique({
         where: { id: stored.userId },
@@ -256,6 +267,15 @@ export class AuthService {
         HttpStatus.FORBIDDEN,
       );
     }
+  }
+
+  /** A back-channel logout from Workeasy360 ended the sign-in that opened this refresh-token family. */
+  private async endedByWorkeasy360(familyId: string): Promise<boolean> {
+    const signIn = await this.prisma.workeasy360SignIn.findUnique({
+      where: { familyId },
+      select: { endedAt: true },
+    });
+    return Boolean(signIn?.endedAt);
   }
 
   async logout(rawToken: string | undefined): Promise<void> {

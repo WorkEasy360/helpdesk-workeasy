@@ -137,6 +137,33 @@ model ExternalIdentity {
   @@unique([issuer, userId])
 }
 
+// Back-channel logout (migration 20261117170619_workeasy360_backchannel_logout, add-only).
+// One row per Workeasy360 sign-in: the session (refresh-token family) it opened, for whom,
+// and the ID token's sid. A tenant model.
+model Workeasy360SignIn {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  familyId       String    @unique  // RefreshToken.familyId of the session it opened
+  issuer         String
+  subject        String
+  providerSid    String?             // the ID token's sid (only once a back-channel URI is registered)
+  createdAt      DateTime  @default(now())
+  endedAt        DateTime?           // set when a logout token ended it
+  @@index([issuer, providerSid])
+  @@index([issuer, subject])
+}
+
+// The jti of every accepted logout token, so none is accepted twice; deleted once the token
+// would be refused anyway (expiresAt). Platform-level, not a tenant model.
+model Workeasy360LogoutToken {
+  issuer     String
+  jti        String
+  receivedAt DateTime @default(now())
+  expiresAt  DateTime
+  @@id([issuer, jti])
+}
+
 model Role {
   id             String  @id @default(cuid())
   organizationId String

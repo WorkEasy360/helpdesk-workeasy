@@ -50,6 +50,31 @@ export interface AuthorizeOptions {
   tamperChallenge?: boolean;
   /** Seconds the code lives (negative: already expired). */
   codeLifetimeSeconds?: number;
+  /**
+   * The Workeasy360 sign-in id the ID token names as `sid` (issued only to a product that
+   * registered a back-channel logout URI). Left out: no `sid`, as for any other product.
+   */
+  sid?: string;
+}
+
+/** What a broken or hostile provider could get wrong in a logout token. */
+export interface LogoutTokenTweaks {
+  iss?: string;
+  aud?: string | string[];
+  /** Seconds relative to now. */
+  expOffset?: number;
+  iatOffset?: number;
+  jti?: string;
+  /** The JOSE typ header; null leaves it out. */
+  typHeader?: string | null;
+  /** The typ claim. */
+  typ?: string;
+  events?: unknown;
+  /** Claims to leave out. */
+  omit?: string[];
+  /** Sign with a key the key set does not contain (under the current kid). */
+  strangerKey?: boolean;
+  extra?: Record<string, unknown>;
 }
 
 export type Authorization =
@@ -66,6 +91,7 @@ interface IssuedCode {
   expiresAt: number;
   used: boolean;
   tweak: TokenTweaks;
+  sid: string | undefined;
 }
 
 export interface EntitlementAnswer {
@@ -110,6 +136,11 @@ export class FakeWorkeasy360 {
   tokenEndpointFailure: number | null = null;
   /** HTTP status the entitlement endpoint answers with instead of working. */
   entitlementFailure: number | null = null;
+  /** HTTP status the key set answers with instead of working. */
+  jwksFailure: number | null = null;
+  /** How often the key set was asked for, and when it was last served. */
+  jwksRequests = 0;
+  lastJwksServedAt = 0;
 
   private server!: Server;
   private port = 0;
@@ -155,8 +186,54 @@ export class FakeWorkeasy360 {
     this.personAnswers.clear();
     this.tokenEndpointFailure = null;
     this.entitlementFailure = null;
+    this.jwksFailure = null;
     this.productCode = 'easy_helpdesk';
     this.registeredRedirectUris = [this.originalRedirectUri];
+  }
+
+  // --- back-channel logout ------------------------------------------------------
+
+  /**
+   * Publishes a new signing key under a new kid and signs from now on with it; the old key
+   * stays published, as during a real rotation. Returns the new kid.
+   */
+  async rotateKey(): Promise<string> {
+    const next = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const kid = `idp-key-${this.jwks.length + 1}`;
+    this.jwks.push({ ...(await exportJWK(next.publicKey)), kid, alg: 'RS256', use: 'sig' });
+    this.signingKey = next.privateKey;
+    this.signingKid = kid;
+    return kid;
+  }
+
+  /**
+   * A Back-Channel Logout 1.0 logout token as Workeasy360 mints one (ADR-069): JOSE header
+   * `typ: logout+jwt` and the kid; `iss`, `aud` (the client id), `iat`, `exp` (120 s), `jti`,
+   * `typ: logout_token`, the back-channel-logout event, `sub` and, for one sign-in, `sid`. Never
+   * a `nonce`.
+   */
+  async logoutToken(names: { sub?: string; sid?: string }, tweak: LogoutTokenTweaks = {}): Promise<string> {
+    const now = Math.floor(Date.now() / 1000);
+    const claims: Record<string, unknown> = {
+      iss: tweak.iss ?? this.issuer,
+      sub: names.sub,
+      aud: tweak.aud ?? this.clientId,
+      iat: now + (tweak.iatOffset ?? 0),
+      exp: now + (tweak.expOffset ?? 120),
+      jti: tweak.jti ?? randomUUID().replace(/-/g, ''),
+      typ: tweak.typ ?? 'logout_token',
+      events: 'events' in tweak ? tweak.events : { 'http://schemas.openid.net/event/backchannel-logout': {} },
+      sid: names.sid,
+      ...tweak.extra,
+    };
+    for (const key of [...(tweak.omit ?? []), ...Object.keys(claims).filter((k) => claims[k] === undefined)]) {
+      delete claims[key];
+    }
+    const typ = tweak.typHeader === undefined ? 'logout+jwt' : tweak.typHeader;
+    const key = tweak.strangerKey ? generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey : this.signingKey;
+    return new SignJWT(claims)
+      .setProtectedHeader({ alg: 'RS256', kid: this.signingKid, ...(typ === null ? {} : { typ }) })
+      .sign(key);
   }
 
   // --- scripting the entitlement API ------------------------------------------
@@ -219,6 +296,7 @@ export class FakeWorkeasy360 {
       expiresAt: Date.now() + (options.codeLifetimeSeconds ?? 60) * 1000,
       used: false,
       tweak: options.tweak ?? {},
+      sid: options.sid,
     });
     return { ok: true, code, state, callbackUrl: this.redirectTo(redirectUri, { code, state }) };
   }
@@ -279,6 +357,9 @@ export class FakeWorkeasy360 {
       });
     }
     if (req.method === 'GET' && path === '/jwks') {
+      this.jwksRequests += 1;
+      if (this.jwksFailure) return this.json(res, this.jwksFailure, { error: 'temporarily_unavailable' });
+      this.lastJwksServedAt = Date.now();
       return this.json(res, 200, { keys: this.jwks });
     }
     if (req.method === 'POST' && path === '/token') {
@@ -369,6 +450,7 @@ export class FakeWorkeasy360 {
       family_name: identity.familyName,
       aal: 1,
       auth_time: now,
+      sid: issued.sid,
       ...tweak.extra,
     };
     for (const key of [...(tweak.omit ?? []), ...Object.keys(claims).filter((k) => claims[k] === undefined)]) {

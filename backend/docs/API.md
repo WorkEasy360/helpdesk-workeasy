@@ -32,6 +32,8 @@ POST   /auth/resend-verification
 GET    /api/auth/workeasy360/start    # ?organization=<uuid>&next=<path> -> 302 to Workeasy360
 GET    /api/auth/callback/workeasy360 # ?code&state -> 302 to the app (session) or /login?sso_error=<code>
 GET    /api/auth/workeasy360/logout   # 302 to Workeasy360's end-session endpoint; changes nothing locally
+# Server to server, from Workeasy360 (OpenID Connect Back-Channel Logout 1.0); no cookie, no CSRF token
+POST   /api/auth/workeasy360/backchannel-logout  # form logout_token -> 200 sessions ended | 400 invalid_request | 503 retry
 
 # Errors added by Workeasy360 access checks (HTTP 403): PASSWORD_SIGN_IN_DISABLED,
 # WORKEASY360_ACCESS_ENDED (details.reason), WORKEASY360_READ_ONLY, WORKEASY360_ACCESS_UNVERIFIED,

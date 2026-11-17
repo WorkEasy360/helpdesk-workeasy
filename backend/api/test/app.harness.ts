@@ -67,6 +67,7 @@ export async function resetDatabase(prisma: PrismaClient, redis?: Redis): Promis
       audit_logs, notifications, verification_tokens, refresh_tokens,
       team_members, teams, user_departments, departments,
       user_roles, role_permissions, roles, external_identities,
+      workeasy360_sign_ins, workeasy360_logout_tokens,
       contacts, accounts, holidays, business_hours, users, organizations
     RESTART IDENTITY CASCADE;
   `);

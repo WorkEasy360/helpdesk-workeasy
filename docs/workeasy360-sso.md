@@ -18,7 +18,9 @@ The protocol is OpenID Connect authorization code with PKCE and `private_key_jwt
    - verifies the ID token offline: key by `kid` from the cached JWKS (one refresh on an unknown `kid`, at most every 10 s), algorithm allow-list RS256/ES256 only, `iss`, `aud` = our client id, `exp`/`nbf`/`iat` with 30 s leeway, `iss sub aud exp iat jti typ` required, `typ` = `id_token`, nonce in constant time, `organization_id` present;
    - refuses `wrong_product` (`product_code` is not `WORKEASY360_PRODUCT_CODE`) and `wrong_organization` (the launcher named one organization and the token names another);
    - provisions the person (next section);
-   - ends any session this browser already holds (account switching, below), issues a fresh one, and redirects to `FRONTEND_URL` + the validated `next` (default `/dashboard`).
+   - ends any session this browser already holds (account switching, below);
+   - records, for back-channel logout, which session it is about to open (the new refresh-token family), for whom (`issuer`, `sub`) and under which Workeasy360 sign-in (the ID token's `sid`, when Workeasy360 issued one; see "Signed out at Workeasy360" below);
+   - issues the fresh session, and redirects to `FRONTEND_URL` + the validated `next` (default `/dashboard`).
 5. The frontend then does what it always does: `POST /auth/refresh` with the cookie, then `GET /auth/me`.
 
 Every failure is a `302` to `FRONTEND_URL/login?sso_error=<code>`, with no session. The vocabulary is fixed: `cancelled`, `expired`, `unavailable`, `refused`, `rate_limited`, `not_entitled`, `no_seat`, `provider_membership_inactive`, `organization_inactive`, `access_policy`, `email_missing`, `email_unverified`, `account_conflict`, `account_disabled`, `membership_inactive`, `wrong_product`, `wrong_organization`. Logs carry the code and ids, never an authorization code, token, state or nonce (and the request logger drops the query string of every `/api/auth/` request: the callback's `code` and `state`, and the start's `next`, which can carry the opened page's query).
@@ -110,6 +112,7 @@ In the production image: `docker compose -f docker-compose.prod.yml exec api nod
    ```
    The product is registered `sso_only`, with post-logout URI `https://help.workeasy360.com/login` and scopes `openid email profile organization`. The redirect URI is compared as an exact string: a trailing slash breaks it.
 3. Set the environment of **both** the API and the worker (see below). To rotate the key, add a second credential with the command above, deploy the new key and `WORKEASY360_KEY_ID`, confirm sign-in works, then revoke the old credential.
+4. Optional, once a release with the receiver is deployed: register the back-channel logout URL, `https://help.workeasy360.com/api/auth/workeasy360/backchannel-logout`, so that signing out of Workeasy360 also ends Help Desk sessions (see "Signed out at Workeasy360: back-channel logout").
 
 ## Environment
 
@@ -194,9 +197,56 @@ The worker needs the same `WORKEASY360_*` values as the API (not the redirect UR
 ## Signing out, and signing in as someone else
 
 - **Sign out** ends the Help Desk session (the refresh token family is revoked) and leaves the `hd_signed_out` marker, so opening the Help Desk afterwards shows the sign-in page instead of signing straight back in (see "Opening Easy Help Desk directly").
-- **Sign out of Easy Help Desk and Workeasy360** (offered when `WORKEASY360_POST_LOGOUT_REDIRECT_URI` is set) ends the Help Desk session first (and leaves the same marker), then navigates to `GET /api/auth/workeasy360/logout`, which redirects to the discovered `end_session_endpoint?client_id=&post_logout_redirect_uri=`. Workeasy360 asks the person to confirm and returns them to the registered URI (the sign-in page). That route changes nothing locally, so a link to it cannot sign anyone out of Help Desk. Other products' sessions are not ended.
+- **Sign out of Easy Help Desk and Workeasy360** (offered when `WORKEASY360_POST_LOGOUT_REDIRECT_URI` is set) ends the Help Desk session first (and leaves the same marker), then navigates to `GET /api/auth/workeasy360/logout`, which redirects to the discovered `end_session_endpoint?client_id=&post_logout_redirect_uri=`. Workeasy360 asks the person to confirm and returns them to the registered URI (the sign-in page). That route changes nothing locally, so a link to it cannot sign anyone out of Help Desk. Other products' sessions end only where those products receive back-channel logout.
 - **Account switching / session fixation:** when a sign-in completes in a browser that already holds a refresh cookie, that cookie's session family is revoked on the server before the new one is issued, so the previous person is signed out properly rather than overwritten in the cookie jar, and a pre-set cookie is never reused. A failed sign-in leaves the existing session alone.
-- There is no front- or back-channel logout from Workeasy360: while the Workeasy360 session is alive, the next Continue with Workeasy360 signs straight back in. Only that explicit click does: a plain visit after a sign-out shows the sign-in page until the person signs in again.
+- **Signing out of Workeasy360** ends Help Desk sessions through back-channel logout once its URL is registered (next section). Without it, a Help Desk session lives on until it is signed out here, expires, or fails the entitlement re-check. Either way, while the Workeasy360 session is alive, the next Continue with Workeasy360 signs straight back in. Only that explicit click does: a plain visit after a sign-out shows the sign-in page until the person signs in again.
+
+## Signed out at Workeasy360: back-channel logout
+
+When a Workeasy360 sign-in that opened Easy Help Desk ends (the person signs out of Workeasy360 or switches account there, a session is revoked, "sign out everywhere", a password change or reset), Workeasy360 tells Help Desk server to server with an OpenID Connect Back-Channel Logout 1.0 request, and Help Desk ends the sessions that sign-in opened. This is platform ADR-069; the contract is section 3.3 of `docs/phase-3/04-oidc-contract.md` in the Workeasy360 repository. Nothing happens until the URL is registered (Rollout, below): until then Workeasy360 sends nothing and its ID tokens carry no `sid`.
+
+**The endpoint.** `POST /api/auth/workeasy360/backchannel-logout`, `application/x-www-form-urlencoded`, one field: `logout_token`. Like the callback it lives under `/api/auth`, outside the versioned prefix (`API_PREFIX`), because its address is registered with Workeasy360, which requires the origin of a registered redirect URI. nginx's `/api/auth/` rule already sends it to the API and logs it without a query string; the request logger logs no bodies, so the token never reaches a log. No cookie is read and no CSRF token is asked for: the provider's signature is the authentication. Every answer carries `Cache-Control: no-store`.
+
+| Answer | When | Workeasy360 then |
+|---|---|---|
+| `200`, empty body | The token verified and the sessions it names have ended (or had already, or there were none here) | Marks the delivery delivered |
+| `400 {"error":"invalid_request"}` | The token does not verify, or its `jti` was accepted before. Nothing ends | Final: a 4xx is not retried |
+| `503 {"error":"temporarily_unavailable"}` | The key set could not be read, or ending the sessions failed. Nothing was recorded | Retries for about 31 hours (0 s, 15 s, 1 min, 5 min, 15 min, 1 h, 6 h, 24 h) |
+| `404` | Workeasy360 sign-in is not configured in this deployment | Final |
+
+**Verification** (`verifyLogoutToken` in `@digisoft/workeasy360`: the same client and cached key set as the ID token):
+
+- the key is chosen by `kid` from the provider's key set (an unknown `kid` refreshes the set once, at most every 10 s), and the algorithm is **the key's** (its `alg`, or what its type implies: RS256 or ES256 only), never what the token asks for;
+- the JOSE header `typ` is `logout+jwt` (or `application/logout+jwt`); a `typ` claim, when present, is `logout_token`, so an ID or access token is never taken for a logout;
+- `iss` is exactly `WORKEASY360_ISSUER`; `aud` contains `WORKEASY360_CLIENT_ID` (with several audiences, `azp` must be it too);
+- `iat` is at most 30 s in the future and at most 10 minutes old; `exp` has not passed (30 s of skew);
+- `events` is an object holding `http://schemas.openid.net/event/backchannel-logout` as an object;
+- there is **no** `nonce`; there is a `sub` and/or a `sid`, and a `jti` (each at most 255 characters);
+- the `jti` is accepted once: it is stored (`workeasy360_logout_tokens`, per issuer) until the token would be refused anyway (the earlier of `exp` and `iat` + 10 minutes, plus the skew), and the receiver deletes expired rows itself, at most every 10 minutes per process. The same token delivered twice is `400`.
+
+**What ends.** A Help Desk session is a refresh-token family. Every Workeasy360 sign-in is recorded in `workeasy360_sign_ins`: the family the callback opens, the person (`issuer`, `sub`) and the ID token's `sid` (empty when Workeasy360 issued none). Then:
+
+- **`sid` present** (one Workeasy360 sign-in ended): the families that sign-in opened are revoked (narrowed to `sub` when the token names one too, as Workeasy360's do). The person's other devices and other Workeasy360 sign-ins keep their sessions.
+- **only `sub`** ("sign out everywhere"): every unrevoked refresh token of every Help Desk user linked to (`issuer`, `sub`) is revoked: one user per organization the person works in, however each session was started.
+
+Recording the `jti`, revoking and marking the sign-ins ended are one database transaction: all of it or none of it, so a failure answers `503` and Workeasy360's retry is accepted. Revoking a revoked session changes nothing, so a repeated delivery (each attempt carries a fresh token) is harmless. A refresh of a family whose sign-in has ended is refused even if one of its tokens escaped the revocation (a rotation in flight at that very moment), so a race cannot keep the session alive.
+
+**What the person sees.** The access token the open tab holds keeps working until it expires (`JWT_EXPIRES_IN`, 15 minutes by default), as after Help Desk's own **Sign out**, and a realtime socket is dropped when that token expires. At the next renewal the refresh is refused (`401`): the app shows the sign-in page, or, opened afresh in SSO-only mode, starts a Workeasy360 sign-in, where the person has to sign in again because their Workeasy360 session is gone. So the bound is one access-token lifetime, not the life of the session.
+
+**Logs.** `workeasy360.backchannel_logout` (the `jti`, `by: sid | sub`, `sessionsEnded`), `workeasy360.logout_token_rejected` (our reason, never the token), and, as errors, `workeasy360.logout_token_unverifiable` (key set or discovery unreadable) and `workeasy360.backchannel_logout_failed` (the database), both answered `503`.
+
+**Rollout.**
+
+1. Deploy a release with the receiver. Migration `20261117170619_workeasy360_backchannel_logout` only adds two tables (`workeasy360_sign_ins`, `workeasy360_logout_tokens`); no existing table changes. There is no new setting: the receiver uses the `WORKEASY360_*` values already set. Until step 2 nothing visible changes (sign-ins are recorded without `sid`).
+2. In Workeasy360 Super Admin: Product Manager, Easy Help Desk, **Integration**, *Authentication & credentials*, **Edit authentication**, **Back-channel logout URL**: `https://help.workeasy360.com/api/auth/workeasy360/backchannel-logout`. It must be https, on the origin of a registered redirect URI (`https://help.workeasy360.com/api/auth/callback/workeasy360`), without query or fragment; saving stamps manifest `2026-11-15`. Another deployment registers `https://<its host>/api/auth/workeasy360/backchannel-logout`.
+3. Check it: sign in to Help Desk through Workeasy360 (that session now has a `sid`), sign out of Workeasy360, and see the delivery as delivered on the **Back-channel logout** card in Super Admin, `workeasy360.backchannel_logout` with `sessionsEnded: 1` in the API log, and the Help Desk tab sent to the sign-in page at its next renewal (at once on a reload).
+
+Sessions opened before step 2 have no `sid`: a logout naming one sign-in cannot find them, though a `sub`-only logout ("sign out everywhere") ends them. Otherwise they end as they always did (Sign out, expiry, the entitlement re-check).
+
+**Rollback.**
+
+- To stop it without a deployment: clear the Back-channel logout URL in Super Admin. Workeasy360 stops sending logout tokens and stops putting `sid` in ID tokens; Help Desk behaves as before. Nothing changes on this side.
+- To roll back the release: clear the URL first. (If it stays registered, the previous release answers `404`, which Workeasy360 records as a final failure without retrying; sessions simply live on as before.) The two tables can stay: the previous release does not read them, and rolling forward again picks up where it left off.
 
 ## SSO-only mode
 
@@ -218,5 +268,7 @@ Agent routes also now require an agent token: a help center customer's token (sa
 - Realtime (Socket.IO): the `/rt` channel is for agents only (a customer's token is refused). A socket is checked at connect and again every `REALTIME_ACCESS_RECHECK_SECONDS` (default 60) through the same cached decision HTTP requests use, so a person whose access ended (or who must sign in with Workeasy360) receives `access.ended` and is disconnected within one re-check, even though `POST /auth/refresh` stays public and keeps minting tokens for them (the access-ended screen needs it). An outage of Workeasy360 never disconnects anyone.
 - A denied organization's overdue SLA tickets are left out of the scan's queries until its denial is due to be asked again (15 minutes; a minute for a refusal), and the skip is logged when it begins or changes, not on every sweep.
 - Inbound provider webhooks that create tickets without an agent (`/api/v1/webhooks/...`) are not refused for an organization whose access ended; the help center's own routes (including the chat widget) are. What it triggers (automations, replies, notifications, webhooks, AI, SLA) is gated in the worker.
+- Back-channel logout ends the session (the refresh-token family) at once; the access token already issued lapses within `JWT_EXPIRES_IN` (15 minutes by default), as after a local Sign out. Access tokens carry no session id, so cutting one off earlier would need a per-request session check.
+- A logout token that arrives while the callback for that very Workeasy360 sign-in is running: after the callback recorded the sign-in, the new session ends at its first refresh (the app refreshes as soon as it lands); before the record (between the code exchange and the record, milliseconds), the token finds nothing to end and the new session lives on. Ended `sid`s are not remembered to refuse such a sign-in.
 - Redis 6.2 or newer is required (`GETDEL`).
 - Entitlement answers and sign-in flows need Redis; without it sign-in fails closed (`unavailable`).

@@ -17,6 +17,7 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'Contact',
   'RefreshToken',
   'ExternalIdentity',
+  'Workeasy360SignIn',
   'Notification',
   'AuditLog',
   'TicketStatus',

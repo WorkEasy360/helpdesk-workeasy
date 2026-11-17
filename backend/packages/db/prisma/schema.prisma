@@ -70,6 +70,7 @@ model Organization {
   auditLogs           AuditLog[]
   refreshTokens       RefreshToken[]
   externalIdentities  ExternalIdentity[]
+  workeasy360SignIns  Workeasy360SignIn[]
   notifications       Notification[]
   ticketStatuses      TicketStatus[]
   ticketPriorities    TicketPriority[]
@@ -175,6 +176,7 @@ model User {
   teams              TeamMember[]
   refreshTokens      RefreshToken[]
   externalIdentities ExternalIdentity[]
+  workeasy360SignIns Workeasy360SignIn[]
   tokens             VerificationToken[]
   notifications      Notification[]
   assignedTickets    Ticket[]            @relation("AssignedTickets")
@@ -227,6 +229,48 @@ model ExternalIdentity {
   @@unique([issuer, userId])
   @@index([organizationId])
   @@map("external_identities")
+}
+
+/// A Help Desk session opened by a Workeasy360 sign-in: the refresh-token family the callback
+/// issued, the person (issuer, sub) and the Workeasy360 sign-in (`sid`) that authorized it.
+/// OpenID Connect Back-Channel Logout finds the sessions a logout token names through it.
+model Workeasy360SignIn {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  /// The refresh-token family this sign-in opened (RefreshToken.familyId); it survives rotation.
+  familyId       String    @unique
+  /// The issuer that vouched for the subject (exact string, no trailing slash).
+  issuer         String
+  subject        String
+  /// The ID token's `sid`: issued only to an integration with a back-channel logout URI.
+  providerSid    String?
+  createdAt      DateTime  @default(now())
+  /// When a back-channel logout ended this sign-in's session.
+  endedAt        DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([issuer, providerSid])
+  @@index([issuer, subject])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("workeasy360_sign_ins")
+}
+
+/// The `jti` of every back-channel logout token accepted, kept until the token would be refused
+/// anyway (expired or too old), so that no logout token is accepted twice.
+model Workeasy360LogoutToken {
+  issuer     String
+  jti        String
+  receivedAt DateTime @default(now())
+  /// After this the token itself is refused, so the row may be deleted.
+  expiresAt  DateTime
+
+  @@id([issuer, jti])
+  @@index([expiresAt])
+  @@map("workeasy360_logout_tokens")
 }
 
 model Role {

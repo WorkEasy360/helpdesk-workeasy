@@ -1,10 +1,10 @@
 import { Controller, Get, Inject, Logger, Req, Res } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import type { Redis } from 'ioredis';
 import type { Workeasy360SsoErrorCode } from '@digisoft/shared';
-import { Workeasy360Error, safeEqual } from '@digisoft/workeasy360';
+import { MAX_LOGOUT_IDENTIFIER_LENGTH, Workeasy360Error, safeEqual } from '@digisoft/workeasy360';
 import { Public } from '../common/decorators/public.decorator';
 import { WORKEASY360_ROUTE_BASE } from '../common/app-prefix';
 import { AppConfig } from '../config/config.module';
@@ -13,6 +13,7 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuthService } from '../auth/auth.service';
 import { TokenService } from '../auth/token.service';
 import { readRefreshCookie, setRefreshCookie } from '../auth/session-cookie';
+import { BackchannelLogoutService } from './backchannel-logout.service';
 import { clearSignedOutMarker } from './signed-out-marker';
 import { FLOW_TTL_SECONDS, FlowStore } from './flow.store';
 import { overLimit } from './rate-limit';
@@ -82,6 +83,7 @@ export class Workeasy360AuthController {
     private readonly tokens: TokenService,
     private readonly prisma: PrismaService,
     private readonly entitlements: EntitlementService,
+    private readonly backchannel: BackchannelLogoutService,
   ) {
     this.flows = new FlowStore(redis);
   }
@@ -184,12 +186,25 @@ export class Workeasy360AuthController {
       // server-side. The new session gets a fresh family; the presented one is never reused.
       await this.endPresentedSession(req);
 
+      // Back-channel logout: which session this sign-in opens, for whom, and under which
+      // Workeasy360 sign-in (`sid`). Recorded before the session is issued: a logout that lands
+      // in between marks the record ended, and a refresh of an ended record is refused.
+      const familyId = randomUUID();
+      await this.backchannel.recordSignIn({
+        organizationId: signedIn.organizationId,
+        userId: signedIn.userId,
+        familyId,
+        issuer: client.issuer,
+        subject: claims.sub,
+        providerSid: providerSid(claims.sid),
+      });
+
       const meta = { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null };
       const session = await this.auth.createSession(
         signedIn.userId,
         signedIn.organizationId,
         meta,
-        undefined,
+        familyId,
         'WORKEASY360',
       );
       await this.entitlements.forgetLink(signedIn.organizationId);
@@ -302,4 +317,13 @@ export class Workeasy360AuthController {
       return false;
     }
   }
+}
+
+/**
+ * The ID token's `sid`, as stored for back-channel logout. Workeasy360 issues it only to a
+ * product that registered a back-channel logout URI; anything unusable is treated as absent
+ * (a logout token can then still end the session through `sub`).
+ */
+function providerSid(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 && value.length <= MAX_LOGOUT_IDENTIFIER_LENGTH ? value : null;
 }
