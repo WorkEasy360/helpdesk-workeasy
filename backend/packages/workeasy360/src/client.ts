@@ -10,11 +10,14 @@ import {
   SignJWT,
   createLocalJWKSet,
   errors as joseErrors,
+  importJWK,
   jwtVerify,
   type FlattenedJWSInput,
   type JSONWebKeySet,
+  type JWK,
   type JWSHeaderParameters,
   type JWTPayload,
+  type KeyLike,
 } from 'jose';
 import { Workeasy360Error } from './errors';
 import { fetchTransport, type Transport } from './transport';
@@ -30,6 +33,19 @@ export const ASSERTION_LIFETIME_SECONDS = 60;
 export const ID_TOKEN_ALGORITHMS = ['RS256', 'ES256'];
 const REQUIRED_CLAIMS = ['iss', 'sub', 'aud', 'exp', 'iat', 'jti', 'typ'];
 const ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer';
+
+/** OpenID Connect Back-Channel Logout 1.0 section 2.4: the event a logout token must carry. */
+export const BACKCHANNEL_LOGOUT_EVENT = 'http://schemas.openid.net/event/backchannel-logout';
+/** The JOSE `typ` of a logout token; the `application/` prefix may be left out (RFC 7515 section 4.1.9). */
+const LOGOUT_TOKEN_JOSE_TYPES = new Set(['logout+jwt', 'application/logout+jwt']);
+const LOGOUT_TOKEN_REQUIRED_CLAIMS = ['iss', 'aud', 'iat', 'exp', 'jti', 'events'];
+/**
+ * A logout token older than this is refused even when its `exp` would still allow it. Workeasy360
+ * mints a fresh token, valid for 120 s, for every delivery attempt, so an old one is a replay.
+ */
+export const MAX_LOGOUT_TOKEN_AGE_SECONDS = 600;
+/** Longest `sub`, `sid` or `jti` a logout token may carry (what the receiver stores). */
+export const MAX_LOGOUT_IDENTIFIER_LENGTH = 255;
 
 export interface Workeasy360ClientConfig {
   issuer: string;
@@ -71,6 +87,26 @@ export interface VerifiedIdToken extends JWTPayload {
   given_name?: string;
   family_name?: string;
   organization_name?: string;
+  /**
+   * The Workeasy360 sign-in that authorized this token. Present only once the product has
+   * registered a back-channel logout URI; a logout token naming it ends this sign-in's sessions.
+   */
+  sid?: string;
+}
+
+/** What a verified back-channel logout token names (Back-Channel Logout 1.0 section 2.4). */
+export interface VerifiedLogoutToken {
+  /** Unique per token: a receiver accepts each one once. */
+  jti: string;
+  /** The person. Absent only when the token names a sign-in alone. */
+  sub?: string;
+  /** The Workeasy360 sign-in that ended. Absent: every session of `sub` ends. */
+  sid?: string;
+  /**
+   * Seconds since the epoch after which this token is refused anyway (expired or too old), so
+   * its `jti` need not be remembered beyond it.
+   */
+  acceptableUntil: number;
 }
 
 interface Metadata {
@@ -417,6 +453,146 @@ export class Workeasy360Client {
     );
   }
 
+  // --- back-channel logout ----------------------------------------------------
+
+  /**
+   * Verifies a logout token as OpenID Connect Back-Channel Logout 1.0 section 2.6 asks, and as
+   * Workeasy360 issues it (signed like an ID token, JOSE header `typ: logout+jwt`):
+   *
+   * 1. the key comes from the provider's key set, chosen by `kid` (one refresh for an unknown
+   *    kid, under the same cooldown as ID tokens), and the algorithm comes from **that key**
+   *    (RS256 or ES256), never from what the token asks for;
+   * 2. the JOSE `typ` is `logout+jwt`, and a `typ` claim, when present, is `logout_token`, so an
+   *    ID or access token (same key, same audience) is never taken as a logout instruction;
+   * 3. `iss` is exactly the configured issuer; `aud` contains this client (and with several
+   *    audiences, `azp` is this client);
+   * 4. `iat` is not in the future and not older than ten minutes, `exp` has not passed (30 s
+   *    of skew either way);
+   * 5. `events` is an object holding the back-channel-logout event as an object;
+   * 6. there is **no** `nonce` (what keeps an ID token from being replayed as a logout token);
+   * 7. `sub` and/or `sid` are present, and `jti` is.
+   *
+   * Throws `invalid_token` for a token that must not be trusted (the receiver answers 400), and
+   * `provider_unavailable` / `provider_misconfigured` when the key set cannot be read (503, so
+   * the provider retries). Replay (a `jti` seen before) is the receiver's to check: it needs storage.
+   */
+  async verifyLogoutToken(logoutToken: string): Promise<VerifiedLogoutToken> {
+    const header = decodeHeader(logoutToken);
+    const type = typeof header['typ'] === 'string' ? header['typ'].toLowerCase() : '';
+    if (!LOGOUT_TOKEN_JOSE_TYPES.has(type)) {
+      throw new Workeasy360Error('invalid_token', 'the typ header is not logout+jwt');
+    }
+    const kid = header['kid'];
+    if (typeof kid !== 'string' || kid.length === 0) {
+      throw new Workeasy360Error('invalid_token', 'no kid');
+    }
+
+    let payload: JWTPayload;
+    try {
+      ({ payload } = await jwtVerify(logoutToken, async (protectedHeader) => this.keyWithItsAlgorithm(protectedHeader), {
+        algorithms: ID_TOKEN_ALGORITHMS,
+        audience: this.clientId,
+        issuer: this.issuer,
+        clockTolerance: LEEWAY_SECONDS,
+        currentDate: new Date(this.now()),
+        requiredClaims: LOGOUT_TOKEN_REQUIRED_CLAIMS,
+      }));
+    } catch (error) {
+      if (error instanceof Workeasy360Error) throw error;
+      const name = error instanceof Error ? error.name : 'Error';
+      const code = error instanceof joseErrors.JOSEError ? error.code : name;
+      throw new Workeasy360Error('invalid_token', `verification failed (${code})`);
+    }
+
+    const nowSeconds = Math.floor(this.now() / 1000);
+    const issuedAt = payload.iat;
+    const expiresAt = payload.exp;
+    if (typeof issuedAt !== 'number' || typeof expiresAt !== 'number') {
+      throw new Workeasy360Error('invalid_token', 'iat or exp is not a number');
+    }
+    if (issuedAt > nowSeconds + LEEWAY_SECONDS) {
+      throw new Workeasy360Error('invalid_token', 'iat is in the future');
+    }
+    if (nowSeconds - issuedAt > MAX_LOGOUT_TOKEN_AGE_SECONDS + LEEWAY_SECONDS) {
+      throw new Workeasy360Error('invalid_token', 'the token is too old');
+    }
+    const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+    if (audiences.length > 1 && payload['azp'] !== this.clientId) {
+      throw new Workeasy360Error('invalid_token', 'several audiences and azp is not this client');
+    }
+    if (payload['azp'] !== undefined && payload['azp'] !== this.clientId) {
+      throw new Workeasy360Error('invalid_token', 'azp is another client');
+    }
+    if ('typ' in payload && payload['typ'] !== 'logout_token') {
+      throw new Workeasy360Error('invalid_token', 'typ is not logout_token');
+    }
+    const events = payload['events'];
+    const event = isPlainObject(events) ? events[BACKCHANNEL_LOGOUT_EVENT] : undefined;
+    if (!isPlainObject(event)) {
+      throw new Workeasy360Error('invalid_token', 'events does not hold the back-channel logout event');
+    }
+    if ('nonce' in payload) {
+      throw new Workeasy360Error('invalid_token', 'a logout token must not carry a nonce');
+    }
+    const sub = optionalIdentifier(payload.sub, 'sub');
+    const sid = optionalIdentifier(payload['sid'], 'sid');
+    if (sub === undefined && sid === undefined) {
+      throw new Workeasy360Error('invalid_token', 'neither sub nor sid');
+    }
+    const jti = optionalIdentifier(payload.jti, 'jti');
+    if (jti === undefined) {
+      throw new Workeasy360Error('invalid_token', 'no jti');
+    }
+
+    return {
+      jti,
+      ...(sub !== undefined ? { sub } : {}),
+      ...(sid !== undefined ? { sid } : {}),
+      // Past exp (or the age limit, whichever is first) plus the skew, the token is refused anyway.
+      acceptableUntil: Math.min(expiresAt, issuedAt + MAX_LOGOUT_TOKEN_AGE_SECONDS) + LEEWAY_SECONDS + 1,
+    };
+  }
+
+  /**
+   * The verifying key for the token's `kid`, imported with the algorithm the key set entry
+   * states (or, without an `alg`, the one its key type implies). It must be RS256 or ES256 and
+   * the token header must name that same algorithm.
+   */
+  private async keyWithItsAlgorithm(header: JWSHeaderParameters): Promise<KeyLike | Uint8Array> {
+    const kid = String(header.kid ?? '');
+    const jwk = await this.keySetEntry(kid);
+    const algorithm = signingAlgorithmOf(jwk);
+    if (!algorithm) {
+      throw new Workeasy360Error('invalid_token', `key ${kid} is not an RS256 or ES256 signing key`);
+    }
+    if (header.alg !== algorithm) {
+      throw new Workeasy360Error('invalid_token', `the token says ${String(header.alg)} but key ${kid} is ${algorithm}`);
+    }
+    try {
+      return await importJWK({ ...jwk, alg: algorithm }, algorithm);
+    } catch {
+      throw new Workeasy360Error('invalid_token', `key ${kid} cannot be imported`);
+    }
+  }
+
+  /** The one key set entry with this `kid`: an unknown kid refreshes the set once (rotation), under the cooldown. */
+  private async keySetEntry(kid: string): Promise<JWK> {
+    for (const refresh of [false, true]) {
+      if (refresh && this.now() - this.jwksAt < JWKS_REFRESH_COOLDOWN_SECONDS * 1000) {
+        // Fetched a moment ago: not a rotation, and refreshing for every garbage token would
+        // turn them into request amplification against the provider.
+        throw new Workeasy360Error('invalid_token', `no key ${kid} in the provider's key set (refresh cooling down)`);
+      }
+      const set = await this.keySet(refresh);
+      const matches = set.keys.filter((entry) => entry.kid === kid);
+      if (matches.length > 1) {
+        throw new Workeasy360Error('invalid_token', `several keys in the provider's key set are ${kid}`);
+      }
+      if (matches[0]) return matches[0];
+    }
+    throw new Workeasy360Error('invalid_token', `no key ${kid} in the provider's key set`);
+  }
+
   // --- the entitlement API ---------------------------------------------------
 
   /**
@@ -479,6 +655,27 @@ function decodeHeader(token: string): Record<string, unknown> {
     // fall through
   }
   throw new Workeasy360Error('invalid_token', 'unreadable header');
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Absent stays absent; present must be a non-empty string of a storable length. */
+function optionalIdentifier(value: unknown, name: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_LOGOUT_IDENTIFIER_LENGTH) {
+    throw new Workeasy360Error('invalid_token', `${name} is not a usable identifier`);
+  }
+  return value;
+}
+
+/** RS256 for an RSA signing key, ES256 for a P-256 one; anything else (or a contradicting `alg`/`use`) is null. */
+function signingAlgorithmOf(jwk: JWK): 'RS256' | 'ES256' | null {
+  if (jwk.use !== undefined && jwk.use !== 'sig') return null;
+  if (jwk.kty === 'RSA' && (jwk.alg === undefined || jwk.alg === 'RS256')) return 'RS256';
+  if (jwk.kty === 'EC' && jwk.crv === 'P-256' && (jwk.alg === undefined || jwk.alg === 'ES256')) return 'ES256';
+  return null;
 }
 
 function isHttpUrl(value: string, httpsOnly = false): boolean {
