@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { io, type Socket } from 'socket.io-client';
-import { getAccessToken, refreshAccessToken } from '@/lib/api-client';
+import { getAccessToken, refreshAccessToken, refreshSession, reportSessionLost } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth.store';
 import { accessRefusalPath } from '@/lib/sso';
 
@@ -79,6 +79,36 @@ export function useRealtime(): void {
       }, 10_000);
     });
     socket.on('session.expired', reconnectWithFreshToken);
+    // The session itself ended on the server (a sign-out, or Workeasy360 ended the sign-in that
+    // opened it): its token is refused and the server drops the socket. One renewal settles what
+    // this browser still has. "No session" moves the page to signed-out, as a failed renewal after
+    // a 401 does; a session (someone signed in again in another tab) reconnects with it. Nothing
+    // else is retried, so an ended session cannot spin.
+    let ending = false;
+    socket.on('session.ended', () => {
+      if (closed || ending) {
+        return;
+      }
+      ending = true;
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
+      void refreshSession({ portalSlug: null }).then((outcome) => {
+        if (closed) {
+          return;
+        }
+        if (outcome.kind === 'ok') {
+          ending = false;
+          if (!socket.connected) socket.connect();
+          return;
+        }
+        if (outcome.kind === 'no_session') {
+          closed = true;
+          socket.close();
+          reportSessionLost();
+        }
+        // Anything else (an outage): the socket stays down and the next request decides.
+      });
+    });
     // Easy Help Desk access ended (or needs a Workeasy360 sign-in) for this person: the server
     // drops the socket and it must stay down - refreshing the token would only reconnect a
     // socket the server will refuse. The person is sent to the screen that explains it.
@@ -99,7 +129,8 @@ export function useRealtime(): void {
     });
     socket.on('disconnect', (reason) => {
       clearTimeout(stableTimer);
-      if (reason === 'io server disconnect') {
+      // After `session.ended` the renewal above already decides what happens next.
+      if (reason === 'io server disconnect' && !ending) {
         reconnectWithFreshToken();
       }
     });

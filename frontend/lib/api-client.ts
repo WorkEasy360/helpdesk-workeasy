@@ -50,6 +50,16 @@ export function onSessionExpired(handler: () => void): void {
 }
 
 /**
+ * The agent session is gone (a renewal answered "no session"), found out some other way than a
+ * request's 401: the realtime channel said the session ended. The page moves to signed-out
+ * exactly as after a 401 whose renewal failed.
+ */
+export function reportSessionLost(): void {
+  setAccessToken(null);
+  onSessionLost?.();
+}
+
+/**
  * Marks this page as running a help center customer session: refreshes go to that
  * help center's portal auth routes and a failed refresh is reported to `onLost`
  * instead of the agent app. Pass `null` to hand the page back to the agent session.
