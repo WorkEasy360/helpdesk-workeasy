@@ -7,8 +7,9 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 import { PERMISSIONS } from '@digisoft/shared';
-import { TokenService } from '../auth/token.service';
+import { TokenService, type AccessTokenPayload } from '../auth/token.service';
 import { AccessControlService } from '../auth/access-control.service';
+import { SessionLivenessService } from '../auth/session-liveness.service';
 import { AppConfig } from '../config/config.module';
 import { SessionAccessService } from '../workeasy360/session-access.service';
 
@@ -18,6 +19,12 @@ export const RT_EVENTS = {
   AGENT_OFFLINE: 'agent.offline',
   /** Sent just before the server drops a socket whose access token has expired. */
   SESSION_EXPIRED: 'session.expired',
+  /**
+   * Sent just before the server drops a socket whose session has ended (a back-channel logout
+   * from Workeasy360, Sign out, a password change...), or refuses a handshake for one. Renewing
+   * fails for an ended session, so the client signs the page out.
+   */
+  SESSION_ENDED: 'session.ended',
   /**
    * Sent just before the server drops a socket whose person no longer has access
    * (`{ code, reason? }`: WORKEASY360_ACCESS_ENDED, _ACCESS_UNVERIFIED or _SIGN_IN_REQUIRED).
@@ -51,6 +58,12 @@ export interface TicketAudienceRooms {
  * through the same cached decision HTTP requests use, so it costs no extra question: a
  * person whose access ended is disconnected within one re-check even though `/auth/refresh`
  * keeps minting tokens for them (so they can reach the access-ended screen and sign out).
+ *
+ * A socket also lives no longer than its session (the refresh-token family its token names): a
+ * handshake is refused for an ended session, and when a session ends every API instance is told
+ * (SESSION_ENDED_CHANNEL) and drops that session's sockets at once, with `session.ended`. The
+ * re-check asks about the session too, so a socket whose ending was not announced (Redis was
+ * briefly away, a password change) goes within one re-check.
  */
 @WebSocketGateway({ namespace: '/rt' })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -64,6 +77,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly accessControl: AccessControlService,
     private readonly config: AppConfig,
     private readonly sessionAccess: SessionAccessService,
+    private readonly sessions: SessionLivenessService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -87,6 +101,20 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
     const result = this.tokens.verifyAccessToken(token);
     if (!result.ok) {
+      client.disconnect(true);
+      return;
+    }
+    const claims = result.payload;
+    // Joined before the session is checked: an ending announced from now on reaches this socket,
+    // and one announced earlier is already visible to the check.
+    if (claims.fam) {
+      await client.join(sessionRoom(claims.fam));
+    }
+    try {
+      if (!(await this.sessionOpen(client, claims))) {
+        return;
+      }
+    } catch {
       client.disconnect(true);
       return;
     }
@@ -134,7 +162,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       return;
     }
     const recheck = setInterval(() => {
-      void this.stillAllowed(client, w360).catch(() => undefined);
+      void this.recheck(client, claims, w360).catch(() => undefined);
     }, this.config.get('REALTIME_ACCESS_RECHECK_SECONDS') * 1000);
     recheck.unref();
     client.data.recheck = recheck;
@@ -175,6 +203,44 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     });
     client.disconnect(true);
     return false;
+  }
+
+  /** The periodic re-check: the session first (an ending this instance was not told of), then access. */
+  private async recheck(
+    client: Socket,
+    claims: AccessTokenPayload,
+    w360: { org: string; sub?: string } | undefined,
+  ): Promise<void> {
+    if (!(await this.sessionOpen(client, claims))) {
+      return;
+    }
+    await this.stillAllowed(client, w360);
+  }
+
+  /**
+   * Whether the socket's session is still open. An ended one is told so and dropped. Throws when
+   * the database cannot say: the handshake then refuses, a re-check leaves the socket alone.
+   */
+  private async sessionOpen(client: Socket, claims: AccessTokenPayload): Promise<boolean> {
+    if (await this.sessions.isLive(claims)) {
+      return true;
+    }
+    client.emit(RT_EVENTS.SESSION_ENDED, {});
+    client.disconnect(true);
+    return false;
+  }
+
+  /**
+   * These sessions ended: tell their sockets on this instance and drop them. Every instance is
+   * told (RealtimeBridge, SESSION_ENDED_CHANNEL), so only local sockets are touched here.
+   */
+  endSessions(families: readonly string[]): void {
+    if (!this.server || families.length === 0) {
+      return;
+    }
+    const rooms = families.map(sessionRoom);
+    this.server.local.to(rooms).emit(RT_EVENTS.SESSION_ENDED, {});
+    this.server.local.in(rooms).disconnectSockets(true);
   }
 
   handleDisconnect(client: Socket): void {
@@ -228,6 +294,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 }
 
+/** One session's sockets (a refresh-token family id is a random UUID, unique across tenants). */
+export const sessionRoom = (familyId: string): string => `session:${familyId}`;
 export const orgRoom = (organizationId: string): string => `org:${organizationId}`;
 export const userRoom = (organizationId: string, userId: string): string =>
   `org:${organizationId}:user:${userId}`;

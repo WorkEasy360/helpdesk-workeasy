@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuthService } from '../auth/auth.service';
 import { TokenService } from '../auth/token.service';
+import { SessionLivenessService } from '../auth/session-liveness.service';
 import { readRefreshCookie, setRefreshCookie } from '../auth/session-cookie';
 import { BackchannelLogoutService } from './backchannel-logout.service';
 import { clearSignedOutMarker } from './signed-out-marker';
@@ -84,6 +85,7 @@ export class Workeasy360AuthController {
     private readonly prisma: PrismaService,
     private readonly entitlements: EntitlementService,
     private readonly backchannel: BackchannelLogoutService,
+    private readonly sessions: SessionLivenessService,
   ) {
     this.flows = new FlowStore(redis);
   }
@@ -286,6 +288,8 @@ export class Workeasy360AuthController {
       where: { familyId: stored.familyId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    // The previous person's access tokens are refused from now on; their open sockets go now.
+    await this.sessions.announceEnded([stored.familyId]);
   }
 
   private fail(res: Response, code: Workeasy360SsoErrorCode, detail: string): void {

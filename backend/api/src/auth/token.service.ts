@@ -17,7 +17,17 @@ export interface AccessTokenPayload {
    * entitlement checks run without a database query.
    */
   w360?: { org: string; sub?: string };
+  /**
+   * The session (refresh-token family) the token was issued for. A request is served only while
+   * that session is open (SessionLivenessService), so ending the session - a back-channel logout,
+   * Sign out - ends the token with it. Always set by `signAccessToken`; absent only on a token
+   * issued before this claim existed, which is refused (and renewed by the app).
+   */
+  fam?: string;
 }
+
+/** What every newly issued access token carries. */
+export type IssuedAccessTokenPayload = AccessTokenPayload & { fam: string };
 
 export type VerifyResult =
   | { ok: true; payload: AccessTokenPayload }
@@ -38,7 +48,7 @@ export class TokenService {
     return this.config.get('JWT_REFRESH_EXPIRES_IN_DAYS') * 24 * 60 * 60 * 1000;
   }
 
-  signAccessToken(payload: AccessTokenPayload): string {
+  signAccessToken(payload: IssuedAccessTokenPayload): string {
     const options: JwtSignOptions = {
       secret: this.config.get('JWT_SECRET'),
       expiresIn: this.accessTokenTtlSeconds,

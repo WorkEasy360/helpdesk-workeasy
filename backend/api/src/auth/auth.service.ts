@@ -17,6 +17,7 @@ import { AppError } from '../common/errors/app-error';
 import { PasswordService } from './password.service';
 import { TokenService } from './token.service';
 import { AccessControlService } from './access-control.service';
+import { SessionLivenessService } from './session-liveness.service';
 import { MailerService } from '../email/mailer.service';
 import { AppConfig } from '../config/config.module';
 import { Workeasy360Settings } from '../workeasy360/workeasy360.settings';
@@ -56,6 +57,7 @@ export class AuthService {
     private readonly mailer: MailerService,
     private readonly config: AppConfig,
     private readonly workeasy360: Workeasy360Settings,
+    private readonly sessions: SessionLivenessService,
   ) {}
 
   async register(input: RegisterInput, meta: RequestMeta): Promise<SessionResult> {
@@ -189,6 +191,7 @@ export class AuthService {
       this.logger.warn(
         `Refresh token replay detected for user ${stored.userId}; session family revoked`,
       );
+      await this.sessions.announceEnded([stored.familyId]);
       throw AppError.unauthenticated('Session is no longer valid', 'TOKEN_EXPIRED');
     }
 
@@ -204,6 +207,7 @@ export class AuthService {
         where: { userId: stored.userId, familyId: stored.familyId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+      await this.sessions.announceEnded([stored.familyId]);
       throw AppError.unauthenticated('Session has ended', 'TOKEN_EXPIRED');
     }
 
@@ -222,17 +226,14 @@ export class AuthService {
       await this.assertAgentSessionMayRefresh(stored);
     }
 
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
-      data: { revokedAt: new Date() },
-    });
-
+    // The presented token is revoked as its successor is stored (one transaction).
     return this.createSession(
       stored.userId,
       stored.organizationId,
       meta,
       stored.familyId,
       stored.authMethod === 'WORKEASY360' ? 'WORKEASY360' : 'PASSWORD',
+      stored.id,
     );
   }
 
@@ -294,6 +295,9 @@ export class AuthService {
       where: { familyId: stored.familyId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    // Its access tokens are refused from now on (the family has no live token); its open
+    // sockets are dropped now.
+    await this.sessions.announceEnded([stored.familyId]);
   }
 
   /**
@@ -495,13 +499,21 @@ export class AuthService {
     });
   }
 
-  /** Issues the access token and the rotating refresh token for an existing user. */
+  /**
+   * Issues the access token and the rotating refresh token for an existing user. The access token
+   * names the session (`fam`, the refresh-token family) and is honoured only while it is open.
+   *
+   * `replacing` is the refresh token a renewal presented: it is revoked in the same transaction
+   * that stores its successor, so the session never looks ended in between (a request checked at
+   * that instant would otherwise be refused).
+   */
   async createSession(
     userId: string,
     organizationId: string,
     meta: RequestMeta,
     familyId: string = randomUUID(),
     method: SessionMethod = 'PASSWORD',
+    replacing?: string,
   ): Promise<SessionResult> {
     const issuer = this.config.get('WORKEASY360_ISSUER');
     const user = await this.prisma.user.findFirst({
@@ -529,7 +541,7 @@ export class AuthService {
     const { token: refreshToken, tokenHash } = this.tokens.createRefreshToken();
     const refreshTokenExpiresAt = new Date(Date.now() + this.tokens.refreshTokenTtlMs);
 
-    await this.prisma.refreshToken.create({
+    const store = this.prisma.refreshToken.create({
       data: {
         organizationId,
         userId,
@@ -541,6 +553,14 @@ export class AuthService {
         userAgent: meta.userAgent,
       },
     });
+    if (replacing) {
+      await this.prisma.$transaction([
+        this.prisma.refreshToken.update({ where: { id: replacing }, data: { revokedAt: new Date() } }),
+        store,
+      ]);
+    } else {
+      await store;
+    }
 
     const accessToken = this.tokens.signAccessToken({
       sub: user.id,
@@ -548,6 +568,7 @@ export class AuthService {
       email: user.email,
       typ: user.type,
       ...(w360 ? { w360 } : {}),
+      fam: familyId,
     });
 
     await this.accessControl.invalidateUser(organizationId, userId);

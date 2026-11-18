@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import type { AuthenticatedUser } from '@digisoft/shared';
 import { createParamDecorator } from '@nestjs/common';
 import { AppError } from '../common/errors/app-error';
+import { sessionRefusal } from '../common/guards/jwt-auth.guard';
 import { AccessControlService } from '../auth/access-control.service';
 import { EntitlementService } from '../workeasy360/entitlement.service';
 import { SessionAccessService } from '../workeasy360/session-access.service';
@@ -67,6 +68,12 @@ export class PortalGuard implements CanActivate {
 
     if (request.authError === 'expired') {
       throw AppError.unauthenticated('Access token has expired', 'TOKEN_EXPIRED');
+    }
+    // A token whose session ended (or whose account was deactivated) is refused here as on agent
+    // routes, not quietly read as an anonymous visit: the page renews once and moves to signed-out.
+    const refusal = sessionRefusal(request.authError);
+    if (refusal) {
+      throw refusal;
     }
     if (request.accessTokenPayload) {
       if (request.accessTokenPayload.org !== helpCenter.organizationId) {

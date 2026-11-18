@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@digisoft/db';
 import type { VerifiedLogoutToken } from '@digisoft/workeasy360';
 import { PrismaService } from '../prisma/prisma.service';
+import { SessionLivenessService } from '../auth/session-liveness.service';
 
 /** One process deletes the remembered `jti`s that can no longer be replayed at most this often. */
 const PURGE_INTERVAL_MS = 10 * 60 * 1000;
@@ -26,11 +27,18 @@ export type LogoutOutcome =
 
 type Tx = Prisma.TransactionClient;
 
+/** What one logout token ended: the answer, and the sessions (refresh-token families) it ended. */
+interface Ending {
+  outcome: Extract<LogoutOutcome, { status: 'ended' }>;
+  families: string[];
+}
+
 /**
  * The storage half of OpenID Connect Back-Channel Logout 1.0 (section 2.7).
  *
- * A Help Desk session is a refresh-token family: signing out revokes the family, and the access
- * token it last issued lapses on its own (JWT_EXPIRES_IN). The Workeasy360 callback records, per
+ * A Help Desk session is a refresh-token family: ending it revokes the family, and every access
+ * token of the session is refused from then on, because each names its family and every request
+ * checks it (SessionLivenessService). The Workeasy360 callback records, per
  * sign-in, which family it opened, for whom (issuer, sub) and under which Workeasy360 sign-in
  * (`sid`). A verified logout token then ends:
  *
@@ -42,6 +50,8 @@ type Tx = Prisma.TransactionClient;
  * Recording the `jti` and ending the sessions are one transaction: if anything fails, nothing
  * happened (the `jti` included), so Workeasy360's retry is not refused as a replay. Ending a
  * session that has already ended changes nothing, which is what at-least-once delivery needs.
+ * Once it has committed, every API instance is told which sessions ended, so their open realtime
+ * sockets are dropped at once (best effort; a socket that misses it goes at its next re-check).
  *
  * Platform-level code: the request carries no tenant, so it uses the raw client.
  */
@@ -50,7 +60,10 @@ export class BackchannelLogoutService {
   private readonly logger = new Logger(BackchannelLogoutService.name);
   private lastPurge = 0;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sessions: SessionLivenessService,
+  ) {}
 
   async recordSignIn(record: SignInRecord): Promise<void> {
     await this.prisma.workeasy360SignIn.create({ data: record });
@@ -59,9 +72,9 @@ export class BackchannelLogoutService {
   /** Ends what a verified logout token names. Throws when the store fails (the caller answers 503). */
   async end(issuer: string, token: VerifiedLogoutToken): Promise<LogoutOutcome> {
     const now = new Date();
-    let outcome: LogoutOutcome;
+    let ending: Ending;
     try {
-      outcome = await this.prisma.$transaction(async (tx) => {
+      ending = await this.prisma.$transaction(async (tx) => {
         // First, so a concurrent delivery of the same token waits on the key and then fails.
         await tx.workeasy360LogoutToken.create({
           data: { issuer, jti: token.jti, expiresAt: new Date(token.acceptableUntil * 1000) },
@@ -74,8 +87,9 @@ export class BackchannelLogoutService {
       if (isUniqueViolation(error)) return { status: 'replayed' };
       throw error;
     }
+    await this.sessions.announceEnded(ending.families);
     await this.purgeExpired(now);
-    return outcome;
+    return ending.outcome;
   }
 
   private async endSignIn(
@@ -84,13 +98,13 @@ export class BackchannelLogoutService {
     sid: string,
     subject: string | undefined,
     now: Date,
-  ): Promise<LogoutOutcome> {
+  ): Promise<Ending> {
     const signIns = await tx.workeasy360SignIn.findMany({
       where: { issuer, providerSid: sid, ...(subject ? { subject } : {}) },
       select: { id: true, userId: true, familyId: true },
     });
-    if (signIns.length === 0) return { status: 'ended', by: 'sid', sessions: 0 };
-    const sessions = await this.revoke(
+    if (signIns.length === 0) return { outcome: { status: 'ended', by: 'sid', sessions: 0 }, families: [] };
+    const live = await this.revoke(
       tx,
       {
         userId: { in: unique(signIns.map((s) => s.userId)) },
@@ -102,7 +116,11 @@ export class BackchannelLogoutService {
       where: { id: { in: signIns.map((s) => s.id) }, endedAt: null },
       data: { endedAt: now },
     });
-    return { status: 'ended', by: 'sid', sessions };
+    return {
+      outcome: { status: 'ended', by: 'sid', sessions: live.length },
+      // Every session the sign-in opened, live or not: a socket must not outlive any of them.
+      families: unique([...live, ...signIns.map((s) => s.familyId)]),
+    };
   }
 
   private async endPerson(
@@ -110,7 +128,7 @@ export class BackchannelLogoutService {
     issuer: string,
     subject: string,
     now: Date,
-  ): Promise<LogoutOutcome> {
+  ): Promise<Ending> {
     const identities = await tx.externalIdentity.findMany({
       where: { issuer, subject },
       select: { userId: true },
@@ -120,17 +138,17 @@ export class BackchannelLogoutService {
       select: { userId: true },
     });
     const userIds = unique([...identities, ...signIns].map((row) => row.userId));
-    if (userIds.length === 0) return { status: 'ended', by: 'sub', sessions: 0 };
-    const sessions = await this.revoke(tx, { userId: { in: userIds } }, now);
+    if (userIds.length === 0) return { outcome: { status: 'ended', by: 'sub', sessions: 0 }, families: [] };
+    const live = await this.revoke(tx, { userId: { in: userIds } }, now);
     await tx.workeasy360SignIn.updateMany({
       where: { userId: { in: userIds }, endedAt: null },
       data: { endedAt: now },
     });
-    return { status: 'ended', by: 'sub', sessions };
+    return { outcome: { status: 'ended', by: 'sub', sessions: live.length }, families: live };
   }
 
-  /** Revokes every unrevoked refresh token matching `where`; returns how many families were live. */
-  private async revoke(tx: Tx, where: Prisma.RefreshTokenWhereInput, now: Date): Promise<number> {
+  /** Revokes every unrevoked refresh token matching `where`; returns the families that were live. */
+  private async revoke(tx: Tx, where: Prisma.RefreshTokenWhereInput, now: Date): Promise<string[]> {
     const live = await tx.refreshToken.findMany({
       where: { ...where, revokedAt: null, expiresAt: { gt: now } },
       select: { familyId: true },
@@ -140,7 +158,7 @@ export class BackchannelLogoutService {
       where: { ...where, revokedAt: null },
       data: { revokedAt: now },
     });
-    return live.length;
+    return live.map((row) => row.familyId);
   }
 
   /** Best effort: a `jti` past its token's acceptance window can never be replayed, so its row can go. */

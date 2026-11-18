@@ -2,17 +2,25 @@ import { Injectable, type NestMiddleware } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 import { TenantContext } from '@digisoft/db';
 import { TokenService } from '../../auth/token.service';
+import { SessionLivenessService } from '../../auth/session-liveness.service';
 import { ApiKeyStrategy } from '../../integrations/api-key.strategy';
 
 /**
  * Verifies the bearer token (if present) and opens the tenant scope for the rest of
  * the request. Requests without a valid token run with no tenant scope at all, so any
  * accidental query against a tenant-owned model fails closed rather than leaking rows.
+ *
+ * A token that verifies is used only while its session is open: a session that has ended (a
+ * back-channel logout from Workeasy360, Sign out, a password change...) leaves the request with
+ * no identity and no tenant scope, exactly like no token, and the guards answer 401
+ * SESSION_ENDED. Checked here, once, so every consumer of the identity (agent routes, the help
+ * center, anything added later) sees only open sessions.
  */
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
   constructor(
     private readonly tokens: TokenService,
+    private readonly sessions: SessionLivenessService,
     private readonly apiKeys: ApiKeyStrategy,
   ) {}
 
@@ -50,7 +58,22 @@ export class TenantContextMiddleware implements NestMiddleware {
       return;
     }
 
-    req.accessTokenPayload = result.payload;
-    TenantContext.run(result.payload.org, () => next());
+    const payload = result.payload;
+    this.sessions.state(payload).then(
+      (state) => {
+        if (state !== 'live') {
+          req.authError = state === 'account_disabled' ? 'disabled' : 'ended';
+          next();
+          return;
+        }
+        req.accessTokenPayload = payload;
+        TenantContext.run(payload.org, () => next());
+      },
+      () => {
+        // Not known to be open, so not served; but not known to be ended either (no 401).
+        req.authError = 'unverified';
+        next();
+      },
+    );
   }
 }

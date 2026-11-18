@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
@@ -31,6 +31,10 @@ export class JwtAuthGuard implements CanActivate {
     if (request.authError === 'expired') {
       throw AppError.unauthenticated('Access token has expired', 'TOKEN_EXPIRED');
     }
+    const refusal = sessionRefusal(request.authError);
+    if (refusal) {
+      throw refusal;
+    }
     if (request.authError === 'invalid' || !request.accessTokenPayload) {
       throw AppError.unauthenticated();
     }
@@ -46,5 +50,34 @@ export class JwtAuthGuard implements CanActivate {
     }
     request.user = user;
     return true;
+  }
+}
+
+/**
+ * What a token that verified but is not an open session is answered (TenantContextMiddleware
+ * decided which), on agent and help center routes alike; null for anything else.
+ *
+ * - `ended`: its session has ended (a back-channel logout, Sign out, a password change...), or it
+ *   names none. A 401 like an expired token, so the app makes its one renewal, which fails for an
+ *   ended session and signs the page out.
+ * - `disabled`: the account is deactivated or deleted (its sessions were ended with it); the more
+ *   precise 401 it always got.
+ * - `unverified`: the session could not be checked. A 503, never a 401, so nobody is signed out
+ *   by an outage.
+ */
+export function sessionRefusal(authError: Request['authError']): AppError | null {
+  switch (authError) {
+    case 'ended':
+      return AppError.unauthenticated('Your session has ended. Sign in again.', 'SESSION_ENDED');
+    case 'disabled':
+      return AppError.unauthenticated('Account is no longer active', 'ACCOUNT_DISABLED');
+    case 'unverified':
+      return new AppError(
+        'SERVICE_UNAVAILABLE',
+        'Your session could not be checked just now. Try again in a moment.',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    default:
+      return null;
   }
 }
