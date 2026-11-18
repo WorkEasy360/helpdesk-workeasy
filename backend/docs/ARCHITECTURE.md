@@ -139,9 +139,9 @@ Customers (contacts) authenticate into the same org but with role `CUSTOMER`; th
 - Login → `{ accessToken (JWT, 15 min, in memory/response body), refreshToken (opaque, 30 d, HTTP-only + Secure + SameSite=Lax cookie) }`.
 - Agents sign in with Workeasy360 (OIDC; `docs/workeasy360-sso.md`): the access token of a Workeasy360-linked organization also carries `w360: { org, sub }`, and a global guard asks Workeasy360 on a cadence whether access has ended. The refresh cookie is `ds_refresh` scoped to `/api` over plain http, and `__Host-ds_refresh` (`Path=/`, Secure, no Domain) with `COOKIE_SECURE`, the only name read there; the flow cookie follows the same rule (`docs/workeasy360-sso.md`, "Cookie names").
 - Refresh tokens are stored hashed in `RefreshToken` with `familyId`; rotation on every use, and reuse of a consumed token revokes the whole family (replay detection).
-- Access token claims: `sub` (userId), `org` (organizationId), `role`, `perms` (permission-key array), `typ`.
+- Access token claims: `sub` (userId), `org` (organizationId), `role`, `perms` (permission-key array), `typ`, and `fam`, the refresh-token family (session) it was issued for. Every request checks that this family is still live (an unrevoked refresh token, and no back-channel logout of the Workeasy360 sign-in that opened it), one PostgreSQL query, so ending a session ends its access tokens at once on every instance (`docs/workeasy360-sso.md`, "Ending a session ends its access tokens").
 - Email verification and password reset use single-use hashed tokens in `VerificationToken` with TTL.
-- Logout revokes the refresh family and clears the cookie.
+- Logout revokes the refresh family and clears the cookie; the family's access tokens are refused from then on (401 `SESSION_ENDED`) and its realtime sockets are dropped.
 - Socket.IO handshake authenticates with the access token, then resolves the user's
   permissions and departments to decide room membership: `org:{orgId}`,
   `org:{orgId}:user:{userId}`, one room per department, and `org:{orgId}:tickets:all`

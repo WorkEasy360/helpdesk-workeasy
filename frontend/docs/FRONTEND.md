@@ -65,7 +65,7 @@ API client sends a 403 `WORKEASY360_*` code; a session that exists is never repl
 - **State**: Zustand for UI state only (sidebar, selected ticket, composer draft, command palette). Server state stays in TanStack Query.
 - **Forms**: React Hook Form + Zod resolvers, with the Zod schemas imported from `backend/packages/shared` so FE and BE validate identically.
 - **Realtime**: one Socket.IO client in a provider; events invalidate the matching TanStack Query keys rather than mutating caches by hand.
-- **Auth**: `middleware.ts` guards route groups by reading the session cookie; the access token is held in memory and refreshed transparently by an Axios interceptor on 401.
+- **Auth**: `middleware.ts` guards route groups by reading the session cookie; the access token is held in memory and refreshed transparently by an Axios interceptor on 401. The interceptor renews once per request; when the renewal is refused too (the session ended: Sign out elsewhere, a back-channel logout from Workeasy360), the page moves to signed-out (`onSessionExpired`: session cleared, query cache dropped, sign-in page). The realtime socket's `session.ended` triggers the same single renewal (`hooks/use-realtime.ts`), so an ended session signs the page out without waiting for a request.
 - **UI**: shadcn/ui + Tailwind, neutral enterprise palette, dense tables, no decorative gradients or animation (§45/§62). Ticket list virtualised with TanStack Virtual (§65).
 - **States**: every data surface ships loading skeleton, empty state, and error state — required by the §69 definition of done.
 - **A11y**: semantic landmarks, focus traps in dialogs, full keyboard paths for reply/assign/status, visible focus rings, WCAG AA contrast (§64).

@@ -12,6 +12,8 @@ Base path `/api/v1`. All responses use the envelope:
 
 List endpoints share `?page&pageSize&sort&order&q&<filters>` and are cursor-capable where volume demands it. Every route except `@Public()` ones requires a bearer access token and is checked by `PermissionsGuard`.
 
+An access token is honoured only while its session (the refresh-token family it names, claim `fam`) is open: once the session ends (Sign out, a back-channel logout from Workeasy360, a password change...) every request carrying it is answered `401 SESSION_ENDED`, on agent and help center routes alike, and a client renews once (`POST /auth/refresh`, refused for an ended session). If the session cannot be checked the answer is `503 SERVICE_UNAVAILABLE`. See `docs/workeasy360-sso.md`, "Ending a session ends its access tokens".
+
 ## Auth — P1 (implemented)
 ```
 GET    /auth/methods                  # { password, workeasy360, workeasy360SignOut } — which ways in are offered
@@ -20,7 +22,7 @@ POST   /auth/register                 # creates org + super admin; 403 REGISTRAT
                                       # when ALLOW_PUBLIC_REGISTRATION=false
 POST   /auth/login                    # 403 PASSWORD_SIGN_IN_DISABLED when WORKEASY360_SSO_ONLY
 POST   /auth/refresh                  # refresh cookie -> new access token (rotates)
-POST   /auth/logout
+POST   /auth/logout                   # ends the session: its access tokens get 401 SESSION_ENDED from now on
 GET    /auth/me
 PATCH  /auth/me                       # { firstName?, lastName?, phone?, avatarUrl? } — own profile only
 POST   /auth/forgot-password
@@ -518,7 +520,11 @@ GET    /search?q=&types=tickets,contacts,accounts,articles
 
 Namespace `/rt`, authenticated on handshake with the access token. A socket joins
 `org:{id}` and `org:{id}:user:{userId}` only, so a broadcast cannot cross a tenant
-boundary. Ticket and department rooms arrive with Phase 2.
+boundary. Ticket and department rooms arrive with Phase 2. It also joins `session:{familyId}`:
+when its session ends, every API instance is told on the Redis channel `rt:session-ended` and
+sends that room `session.ended` before dropping it; a handshake for an ended session gets
+`session.ended` and is refused. `session.expired` (the token expired: renew and reconnect) and
+`access.ended` (Workeasy360 access ended) precede a drop the same way.
 
 Implemented today: `ticket.created`, `ticket.updated`, `ticket.assigned`,
 `ticket.status_changed`, `message.created`, `sla.warning`, `sla.breached`,
@@ -535,14 +541,16 @@ which the API instances fan out to their own sockets.
 server -> client: ticket.created · ticket.updated · ticket.assigned ·
                   ticket.status_changed · message.created · comment.created ·
                   notification.created · agent.online · agent.offline ·
-                  chat.message · chat.typing · sla.warning · sla.breached
+                  chat.message · chat.typing · sla.warning · sla.breached ·
+                  session.expired · session.ended · access.ended
 client -> server: ticket.subscribe · ticket.unsubscribe · chat.message ·
                   chat.typing · presence.ping
 ```
 
 ## Error codes (initial catalogue)
 
-`VALIDATION_ERROR` · `UNAUTHENTICATED` · `TOKEN_EXPIRED` · `INVALID_CREDENTIALS` ·
+`VALIDATION_ERROR` · `UNAUTHENTICATED` · `TOKEN_EXPIRED` · `SESSION_ENDED` ·
+`SERVICE_UNAVAILABLE` · `INVALID_CREDENTIALS` ·
 `FORBIDDEN` · `PERMISSION_DENIED` · `NOT_FOUND` · `<ENTITY>_NOT_FOUND` ·
 `CONFLICT` · `EMAIL_ALREADY_EXISTS` · `RATE_LIMITED` · `FILE_TOO_LARGE` ·
 `UNSUPPORTED_MEDIA_TYPE` · `WEBHOOK_SIGNATURE_INVALID` · `INTERNAL_ERROR`
