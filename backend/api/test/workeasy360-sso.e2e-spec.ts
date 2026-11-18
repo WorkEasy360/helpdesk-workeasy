@@ -57,6 +57,8 @@ describe('Sign in with Workeasy360 (e2e)', () => {
   let helpers: typeof import('./app.harness');
   let entitlements: import('../src/workeasy360/entitlement.service').EntitlementService;
   let linkOrganization: typeof import('../src/workeasy360/link-organization').linkOrganization;
+  let linkUser: typeof import('../src/workeasy360/link-user').linkUser;
+  let settings: import('../src/workeasy360/workeasy360.settings').Workeasy360Settings;
   const appKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 
   // --- helpers ------------------------------------------------------------------
@@ -203,6 +205,9 @@ describe('Sign in with Workeasy360 (e2e)', () => {
     const { EntitlementService } = await import('../src/workeasy360/entitlement.service');
     entitlements = harness.app.get(EntitlementService);
     ({ linkOrganization } = await import('../src/workeasy360/link-organization'));
+    ({ linkUser } = await import('../src/workeasy360/link-user'));
+    const { Workeasy360Settings } = await import('../src/workeasy360/workeasy360.settings');
+    settings = harness.app.get(Workeasy360Settings);
   }, 240_000);
 
   beforeEach(async () => {
@@ -211,10 +216,42 @@ describe('Sign in with Workeasy360 (e2e)', () => {
     entitlements.clearLocal();
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   afterAll(async () => {
     await harness?.close();
     await provider?.stop();
   });
+
+  /** WORKEASY360_LINK_BY_VERIFIED_EMAIL on, for one test (restored after each). */
+  const withEmailLinking = (): void => {
+    jest.spyOn(settings, 'linkByVerifiedEmail', 'get').mockReturnValue(true);
+  };
+
+  /** What an operator passes to link-workeasy360-user. */
+  const vouch = (extra: Partial<import('../src/workeasy360/link-user').LinkUserRequest> = {}) => ({
+    email: 'owner@acme.example',
+    subject: 'sub-owner',
+    workeasy360OrganizationId: ORG_A,
+    issuer: provider.issuer,
+    actor: 'ops@workeasy360.test',
+    reason: 'OPS-1: confirmed with the person',
+    ...extra,
+  });
+
+  const linkAudits = (userId?: string) =>
+    harness.prisma.auditLog.findMany({
+      where: { action: { startsWith: 'user.workeasy360_link' }, ...(userId ? { entityId: userId } : {}) },
+      orderBy: { createdAt: 'asc' },
+    });
+
+  async function legacyOrganization() {
+    const legacy = await helpers.registerOrg(http, 'legacy', 'owner@acme.example');
+    await linkOrganization(harness.prisma, legacy.organizationId, ORG_A);
+    return legacy;
+  }
 
   // --- start ----------------------------------------------------------------------
 
@@ -443,14 +480,8 @@ describe('Sign in with Workeasy360 (e2e)', () => {
 
   // --- linking an existing local account ---------------------------------------------
 
-  describe('linking an account that already exists locally', () => {
-    async function legacyOrganization() {
-      const legacy = await helpers.registerOrg(http, 'legacy', 'owner@acme.example');
-      await linkOrganization(harness.prisma, legacy.organizationId, ORG_A);
-      return legacy;
-    }
-
-    it('lands in the linked organization, links by a verified address, retires the password and revokes its sessions', async () => {
+  describe('an account that already exists locally (never merged by address)', () => {
+    it('refuses an existing account with the same verified address by default (account_conflict): nothing is merged, its password and sessions stay', async () => {
       const legacy = await legacyOrganization();
       const login = await request(http)
         .post(apiPath('/auth/login'))
@@ -458,27 +489,87 @@ describe('Sign in with Workeasy360 (e2e)', () => {
         .expect(200);
       const oldCookie = pair(login, REFRESH_COOKIE)!;
 
-      const result = await signIn(owner);
-      expect(result.refreshCookie).toBeDefined();
-      expect(await harness.prisma.organization.count()).toBe(1);
+      await expectRefused(await signIn(owner), 'account_conflict');
 
-      const user = await harness.prisma.user.findUniqueOrThrow({
-        where: { id: legacy.userId },
-        include: { roles: { include: { role: true } }, externalIdentities: true },
-      });
-      expect(user.passwordHash).toBeNull();
-      expect(user.emailVerifiedAt).not.toBeNull();
-      expect(user.roles.map((r) => r.role.systemKey)).toEqual(['SUPER_ADMIN']);
-      expect(user.externalIdentities).toHaveLength(1);
+      expect(await harness.prisma.externalIdentity.count()).toBe(0);
       expect(await harness.prisma.user.count()).toBe(1);
-
-      // Every session the old password issued is gone.
-      await request(http).post(apiPath('/auth/refresh')).set('Cookie', oldCookie).expect(401);
-      // And the password no longer opens anything.
+      expect(await harness.prisma.organization.count()).toBe(1);
+      const user = await harness.prisma.user.findUniqueOrThrow({ where: { id: legacy.userId } });
+      expect(user.passwordHash).not.toBeNull();
+      // The password session lives on, and the password still signs in (SSO-only is off here).
+      await request(http).post(apiPath('/auth/refresh')).set('Cookie', oldCookie).expect(200);
       await request(http)
         .post(apiPath('/auth/login'))
         .send({ email: 'owner@acme.example', password: 'Str0ngPassword1' })
-        .expect(401);
+        .expect(200);
+      // The refusal is audited with the (issuer, sub) that asked; no link is.
+      const audits = await linkAudits(legacy.userId);
+      expect(audits.map((a) => a.action)).toEqual(['user.workeasy360_link_refused']);
+      expect(audits[0]!.actorType).toBe('SYSTEM');
+      expect(audits[0]!.organizationId).toBe(legacy.organizationId);
+      expect(audits[0]!.newValue).toMatchObject({ issuer: provider.issuer, subject: 'sub-owner', reason: 'email_linking_off' });
+    });
+
+    it('with WORKEASY360_LINK_BY_VERIFIED_EMAIL on, still never links a staff account automatically: SUPER_ADMIN, ADMIN, AGENT, LIGHT_AGENT', async () => {
+      withEmailLinking();
+      const legacy = await legacyOrganization();
+      await expectRefused(await signIn(owner), 'account_conflict');
+      for (const systemKey of ['ADMIN', 'AGENT', 'LIGHT_AGENT']) {
+        const email = `${systemKey.toLowerCase()}@acme.example`;
+        const role = await harness.prisma.role.findFirstOrThrow({ where: { organizationId: legacy.organizationId, systemKey } });
+        await harness.prisma.user.create({
+          data: {
+            organizationId: legacy.organizationId,
+            email,
+            firstName: 'Staff',
+            lastName: systemKey,
+            type: 'AGENT',
+            passwordHash: 'x',
+            roles: { create: { roleId: role.id } },
+          },
+        });
+        await expectRefused(await signIn({ ...agent, sub: `sub-${systemKey}`, email }), 'account_conflict');
+      }
+      expect(await harness.prisma.externalIdentity.count()).toBe(0);
+      const audits = await linkAudits();
+      expect(audits).toHaveLength(4);
+      for (const audit of audits) {
+        expect(audit.action).toBe('user.workeasy360_link_refused');
+        expect(audit.newValue).toMatchObject({ reason: 'staff_never_auto_linked' });
+      }
+    });
+
+    it('never links across organizations, setting or not: the same address in another organization stays a separate person', async () => {
+      withEmailLinking();
+      const other = await helpers.registerOrg(http, 'other', 'agent@acme.example');
+      await linkOrganization(harness.prisma, other.organizationId, ORG_B);
+      await signIn(owner);
+
+      const result = await signIn(agent);
+      expect(result.refreshCookie).toBeDefined();
+
+      const elsewhere = await harness.prisma.user.findUniqueOrThrow({
+        where: { id: other.userId },
+        include: { externalIdentities: true },
+      });
+      expect(elsewhere.externalIdentities).toHaveLength(0);
+      expect(elsewhere.passwordHash).not.toBeNull();
+      const joined = await harness.prisma.user.findFirstOrThrow({
+        where: { email: 'agent@acme.example', organizationId: { not: other.organizationId } },
+        include: { externalIdentities: true, roles: { include: { role: true } } },
+      });
+      expect(joined.externalIdentities.map((i) => i.subject)).toEqual(['sub-agent']);
+      expect(joined.roles.map((r) => r.role.systemKey)).toEqual(['AGENT']);
+      expect(await linkAudits()).toHaveLength(0);
+    });
+
+    it('never re-links an account already linked to another Workeasy360 account, setting or not (account_conflict)', async () => {
+      await signIn(owner);
+      await expectRefused(await signIn({ ...owner, sub: 'sub-impostor' }), 'account_conflict');
+      withEmailLinking();
+      await expectRefused(await signIn({ ...owner, sub: 'sub-impostor' }), 'account_conflict');
+      const identities = await harness.prisma.externalIdentity.findMany();
+      expect(identities.map((i) => i.subject)).toEqual(['sub-owner']);
     });
 
     it('does not link an address Workeasy360 has not verified, and creates nothing', async () => {
@@ -523,14 +614,6 @@ describe('Sign in with Workeasy360 (e2e)', () => {
       expect(await harness.prisma.externalIdentity.count()).toBe(1);
     });
 
-    it('refuses an account already linked to another Workeasy360 account (account_conflict)', async () => {
-      await signIn(owner);
-      const result = await signIn({ ...owner, sub: 'sub-impostor' });
-      await expectRefused(result, 'account_conflict');
-      const identities = await harness.prisma.externalIdentity.findMany();
-      expect(identities.map((i) => i.subject)).toEqual(['sub-owner']);
-    });
-
     it('refuses a deactivated account, found by identity or by address (account_disabled)', async () => {
       await signIn(owner);
       await signIn(agent);
@@ -555,7 +638,7 @@ describe('Sign in with Workeasy360 (e2e)', () => {
       await expectRefused(await signIn(owner), 'organization_inactive');
     });
 
-    it('lets an administrator pre-provision an agent who then signs in and is linked by verified address', async () => {
+    it('refuses an agent an administrator pre-provisioned until an operator links them; the role they were given is kept', async () => {
       await signIn(owner);
       const organization = await harness.prisma.organization.findFirstOrThrow();
       const role = await harness.prisma.role.findFirstOrThrow({ where: { organizationId: organization.id, systemKey: 'LIGHT_AGENT' } });
@@ -569,7 +652,11 @@ describe('Sign in with Workeasy360 (e2e)', () => {
           roles: { create: { roleId: role.id } },
         },
       });
-      await signIn(agent);
+      await expectRefused(await signIn(agent), 'account_conflict');
+
+      await linkUser(harness.prisma, vouch({ email: 'agent@acme.example', subject: 'sub-agent', reason: 'pre-provisioned by the owner' }));
+      const result = await signIn(agent);
+      expect(result.refreshCookie).toBeDefined();
       const linked = await harness.prisma.user.findUniqueOrThrow({
         where: { id: pre.id },
         include: { roles: { include: { role: true } }, externalIdentities: true },
@@ -580,6 +667,96 @@ describe('Sign in with Workeasy360 (e2e)', () => {
     });
   });
 
+  // --- the operator-vouched link ---------------------------------------------------------
+
+  describe('link-workeasy360-user (the operator-vouched link)', () => {
+    it('links an existing administrator, audits who, when, which accounts and why, ends its password sessions and keeps its password', async () => {
+      const legacy = await legacyOrganization();
+      const login = await request(http)
+        .post(apiPath('/auth/login'))
+        .send({ email: 'owner@acme.example', password: 'Str0ngPassword1' })
+        .expect(200);
+      const oldCookie = pair(login, REFRESH_COOKIE)!;
+
+      const linked = await linkUser(harness.prisma, vouch({ email: 'Owner@Acme.example', workeasy360OrganizationId: ORG_A.toUpperCase() }));
+      expect(linked).toMatchObject({ changed: true, userId: legacy.userId, organizationId: legacy.organizationId });
+      expect(linked.sessionsEnded).toBeGreaterThanOrEqual(1);
+
+      // The sessions the password opened are over...
+      await request(http).post(apiPath('/auth/refresh')).set('Cookie', oldCookie).expect(401);
+      // ...but the password itself is left as it was (SSO-only mode is what retires it).
+      const user = await harness.prisma.user.findUniqueOrThrow({
+        where: { id: legacy.userId },
+        include: { externalIdentities: true, roles: { include: { role: true } } },
+      });
+      expect(user.passwordHash).not.toBeNull();
+      expect(user.externalIdentities.map((i) => [i.issuer, i.subject])).toEqual([[provider.issuer, 'sub-owner']]);
+
+      const audits = await linkAudits(legacy.userId);
+      expect(audits.map((a) => a.action)).toEqual(['user.workeasy360_linked']);
+      expect(audits[0]!.organizationId).toBe(legacy.organizationId);
+      expect(audits[0]!.actorType).toBe('SYSTEM');
+      expect(audits[0]!.createdAt).toBeInstanceOf(Date);
+      expect(audits[0]!.newValue).toMatchObject({
+        method: 'operator',
+        operator: 'ops@workeasy360.test',
+        reason: 'OPS-1: confirmed with the person',
+        issuer: provider.issuer,
+        subject: 'sub-owner',
+        workeasy360OrganizationId: ORG_A,
+        email: 'owner@acme.example',
+      });
+
+      // The person now signs in through Workeasy360 as that account, with the role it had.
+      const result = await signIn(owner);
+      expect(result.refreshCookie).toBeDefined();
+      expect(await harness.prisma.user.count()).toBe(1);
+      expect(user.roles.map((r) => r.role.systemKey)).toEqual(['SUPER_ADMIN']);
+      // And, with SSO-only off, the password still works too.
+      await request(http)
+        .post(apiPath('/auth/login'))
+        .send({ email: 'owner@acme.example', password: 'Str0ngPassword1' })
+        .expect(200);
+
+      // The same link again is a no-op, with no second audit entry.
+      expect((await linkUser(harness.prisma, vouch())).changed).toBe(false);
+      expect(await linkAudits(legacy.userId)).toHaveLength(1);
+    });
+
+    it('refuses every conflict and changes nothing', async () => {
+      await signIn(owner);
+      const organization = await harness.prisma.organization.findFirstOrThrow();
+      const bob = await harness.prisma.user.create({
+        data: { organizationId: organization.id, email: 'bob@acme.example', firstName: 'Bob', lastName: 'B', type: 'AGENT' },
+      });
+      await harness.prisma.user.create({
+        data: { organizationId: organization.id, email: 'cora@acme.example', firstName: 'Cora', lastName: 'C', type: 'CUSTOMER', passwordHash: 'x' },
+      });
+      await helpers.registerOrg(http, 'other', 'carol@other.example');
+
+      // The account is already linked to another Workeasy360 account.
+      await expect(linkUser(harness.prisma, vouch({ subject: 'sub-someone-else' }))).rejects.toThrow(/already linked to another Workeasy360 account/);
+      // The Workeasy360 account is already someone else's here.
+      await expect(linkUser(harness.prisma, vouch({ email: 'bob@acme.example' }))).rejects.toThrow(/already linked to owner@acme.example/);
+      // An account outside the organization bound to that Workeasy360 organization.
+      await expect(linkUser(harness.prisma, vouch({ email: 'carol@other.example', subject: 'sub-carol' }))).rejects.toThrow(/has no account/);
+      // A Workeasy360 organization no Help Desk organization is bound to.
+      await expect(
+        linkUser(harness.prisma, vouch({ email: 'carol@other.example', subject: 'sub-carol', workeasy360OrganizationId: ORG_B })),
+      ).rejects.toThrow(/link-workeasy360-organization/);
+      // A customer, and a deactivated agent.
+      await expect(linkUser(harness.prisma, vouch({ email: 'cora@acme.example', subject: 'sub-cora' }))).rejects.toThrow(/customer/);
+      await harness.prisma.user.update({ where: { id: bob.id }, data: { isActive: false } });
+      await expect(linkUser(harness.prisma, vouch({ email: 'bob@acme.example', subject: 'sub-bob' }))).rejects.toThrow(/deactivated/);
+      // Nobody vouching, or no reason.
+      await expect(linkUser(harness.prisma, vouch({ email: 'bob@acme.example', subject: 'sub-bob', actor: '' }))).rejects.toThrow(/--actor/);
+      await expect(linkUser(harness.prisma, vouch({ email: 'bob@acme.example', subject: 'sub-bob', reason: ' ' }))).rejects.toThrow(/--reason/);
+
+      expect((await harness.prisma.externalIdentity.findMany()).map((i) => i.subject)).toEqual(['sub-owner']);
+      expect(await linkAudits()).toHaveLength(0);
+    });
+  });
+
   // --- the link command -------------------------------------------------------------
 
   describe('link-workeasy360-organization', () => {
@@ -587,8 +764,12 @@ describe('Sign in with Workeasy360 (e2e)', () => {
       const legacy = await helpers.registerOrg(http, 'legacy', 'owner@acme.example');
       const result = await linkOrganization(harness.prisma, legacy.organizationId, ORG_A.toUpperCase());
       expect(result.changed).toBe(true);
-      await signIn(owner);
+      // A new person lands in it; the existing owner is not merged by address (account_conflict).
+      expect((await signIn(agent)).refreshCookie).toBeDefined();
+      await expectRefused(await signIn(owner), 'account_conflict');
       expect(await harness.prisma.organization.count()).toBe(1);
+      const joined = await harness.prisma.user.findFirstOrThrow({ where: { email: 'agent@acme.example' } });
+      expect(joined.organizationId).toBe(legacy.organizationId);
       const organization = await harness.prisma.organization.findUniqueOrThrow({ where: { id: legacy.organizationId } });
       expect(organization.workeasy360OrganizationId).toBe(ORG_A);
     });
@@ -1380,7 +1561,7 @@ describe('Sign in with Workeasy360 (e2e)', () => {
       await request(http).post(apiPath(`/portal/${slug}/auth/refresh`)).set('Cookie', customerCookie).expect(200);
     });
 
-    it('linking an account invalidates its outstanding reset and invitation links', async () => {
+    it('the operator link leaves the account\'s reset and invitation links, like its password, as they are', async () => {
       const legacy = await helpers.registerOrg(http, 'pretokens', 'owner@acme.example');
       await linkOrganization(harness.prisma, legacy.organizationId, ORG_A);
       const { TokenService } = await import('../src/auth/token.service');
@@ -1395,18 +1576,17 @@ describe('Sign in with Workeasy360 (e2e)', () => {
         data: { userId: legacy.userId, type: 'EMAIL_VERIFICATION', tokenHash: hash('verify-token-0123456789abcdef'), expiresAt: new Date(Date.now() + 3600_000) },
       });
 
-      await signIn(owner);
+      await linkUser(harness.prisma, vouch());
 
       const rows = await harness.prisma.verificationToken.findMany({ where: { userId: legacy.userId } });
       const used = Object.fromEntries(rows.map((r) => [r.type, r.usedAt !== null]));
-      expect(used['PASSWORD_RESET']).toBe(true);
-      expect(used['INVITE']).toBe(true);
-      expect(used['EMAIL_VERIFICATION']).toBe(false);
-      await request(http)
+      expect(used).toEqual({ PASSWORD_RESET: false, INVITE: false, EMAIL_VERIFICATION: false });
+      // SSO-only is off here, so the reset still works; with it on the route is refused (SSO-only spec).
+      const reset = await request(http)
         .post(apiPath('/auth/reset-password'))
-        .send({ token: 'reset-token-0123456789abcdef', password: 'Brand-New-Pass9' })
-        .expect(400);
-      expect((await harness.prisma.user.findUniqueOrThrow({ where: { id: legacy.userId } })).passwordHash).toBeNull();
+        .send({ token: 'reset-token-0123456789abcdef', password: 'Brand-New-Pass9' });
+      expect(reset.status).toBeLessThan(300);
+      expect((await harness.prisma.user.findUniqueOrThrow({ where: { id: legacy.userId } })).passwordHash).not.toBeNull();
     });
   });
 

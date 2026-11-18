@@ -218,7 +218,6 @@ export class Workeasy360AuthController {
         organizationId: signedIn.organizationId,
         userId: signedIn.userId,
         organizationCreated: signedIn.organizationCreated,
-        linked: signedIn.linked,
         userCreated: signedIn.userCreated,
       });
       res.redirect(302, `${this.frontendOrigin}${flow.next}`);

@@ -75,7 +75,7 @@ The federated identity is `(issuer, sub)` inside the Help Desk organization boun
 | Workeasy360 organization not seen before | A new Help Desk organization through the same provisioning that registration uses (system roles, business hours, default department, ticket and SLA defaults, help center), named from `organization_name` (fallback "My organization"), with a free slug. The person becomes **SUPER_ADMIN** |
 | Organization already bound | The person joins it |
 | New person, address **not** verified at Workeasy360 | `email_unverified`. It neither links an account nor creates one. No address: `email_missing` |
-| New person, a Help Desk **agent** has the same verified address in that organization | Linked to that user (the role the administrator gave is kept). The local password is removed and every refresh token it issued is revoked: Help Desk never verified that address, so whoever chose the password may not be the person Workeasy360 vouched for |
+| New person, a Help Desk **agent** (any role: `SUPER_ADMIN`, `ADMIN`, `AGENT`, `LIGHT_AGENT` or a custom one) has the same verified address in that organization | `account_conflict`, with "contact your administrator to have it linked". **Never merged automatically**, whoever verified the address and whatever `WORKEASY360_LINK_BY_VERIFIED_EMAIL` says. The account is left exactly as it was (password, roles, sessions), and the refusal is written to the organization's audit log as `user.workeasy360_link_refused` with the issuer and `sub` that asked. An operator links the two with `link-workeasy360-user` once someone has confirmed they are the same person ("Linking an existing account", below) |
 | ... that user is a **customer** | `account_conflict` (a sign-in never turns a customer into an agent) |
 | ... that user is already linked to another Workeasy360 account | `account_conflict` |
 | ... that user is deactivated or deleted | `account_disabled` |
@@ -83,7 +83,7 @@ The federated identity is `(issuer, sub)` inside the Help Desk organization boun
 | The bound organization was deleted | `organization_inactive` |
 | Two first sign-ins racing | The unique constraints decide; the loser looks again once and joins (or `account_conflict` if a concurrent sign-in linked something different) |
 
-Administrators can still pre-provision agents (name, roles, departments) with a user created without a password: they sign in through Workeasy360 and are linked by verified address. In SSO-only mode creating a user does not send an invitation email.
+**Pre-provisioned agents.** An agent an administrator creates in Help Desk (name, roles, departments) is an existing account like any other: their first Workeasy360 sign-in is `account_conflict` until an operator links them. With Workeasy360 the simpler path is not to pre-create anyone: the person's first sign-in creates them with `WORKEASY360_DEFAULT_ROLE`, and an administrator then changes their role. In SSO-only mode creating a user does not send an invitation email.
 
 ### Attaching an existing organization
 
@@ -94,7 +94,30 @@ pnpm --filter @digisoft/api build          # once; production images already con
 pnpm --filter @digisoft/api run link-workeasy360-organization <helpdeskOrgId> <workeasy360OrgId>
 ```
 
-In the production image: `docker compose -f docker-compose.prod.yml exec api node dist/scripts/link-workeasy360-organization.js <helpdeskOrgId> <workeasy360OrgId>`. It refuses an organization already bound to a different Workeasy360 organization and a Workeasy360 organization another Help Desk organization already holds. Its agents are linked at their own first sign-in. The agents' sessions already open end when it binds (their refresh tokens are revoked, and with them their access tokens); each agent signs in again through Workeasy360.
+In the production image: `docker compose -f docker-compose.prod.yml exec api node dist/scripts/link-workeasy360-organization.js <helpdeskOrgId> <workeasy360OrgId>`. It refuses an organization already bound to a different Workeasy360 organization and a Workeasy360 organization another Help Desk organization already holds. Its existing agents are not linked by it: link each one with `link-workeasy360-user` (next section); until then their Workeasy360 sign-in is `account_conflict`. The agents' sessions already open end when it binds (their refresh tokens are revoked, and with them their access tokens); each agent signs in again through Workeasy360 once linked.
+
+### Linking an existing account (operator)
+
+The only way an existing Help Desk account is joined to a Workeasy360 account is an operator vouching that they are the same person (confirmed with the person, or by the organization's owner), with the person's Workeasy360 `sub`. The `sub` is in the `user.workeasy360_link_refused` audit entry the person's refused sign-in wrote, or comes from Workeasy360; never take it from an email alone.
+
+```
+pnpm --filter @digisoft/api run link-workeasy360-user \
+  --email ada@acme.example --subject <Workeasy360 sub> --organization <workeasy360OrgId> \
+  --actor "ops@workeasy360.com" --reason "OPS-123: confirmed with Ada by phone"
+```
+
+In the production image: `docker compose -f docker-compose.prod.yml exec api node dist/scripts/link-workeasy360-user.js --email ... --subject ... --organization ... --actor ... --reason ...`. The issuer is `WORKEASY360_ISSUER` (or `--issuer`).
+
+- The account is looked up **inside the Help Desk organization bound to that Workeasy360 organization** (link the organization first); an account in another organization is not found.
+- It refuses, changing nothing: a missing `--actor` or `--reason`; a customer; a deactivated or deleted account; an account already linked to another Workeasy360 account (under this issuer, or another `sub` under an earlier one); and a Workeasy360 account already linked to someone else in the organization. Exactly the same link again is a no-op.
+- Staff and administrators (`SUPER_ADMIN` included) may be linked this way: that is what the command is for.
+- It writes `user.workeasy360_linked` to the organization's audit log, `actorType` `SYSTEM`, with `method: operator`, the operator (`--actor`), the reason, the issuer, `sub`, Workeasy360 organization, the account's address and the time.
+- It revokes the account's refresh tokens (the sessions its password opened, and with them their access tokens); the person's next session is the one Workeasy360 opens.
+- **The password is left as it is** (and so is any reset or invitation link already mailed): existing sign-in data is not removed before the migration and linking have been tested. In SSO-only mode none of it opens anything (below); outside it, the account keeps both ways in.
+
+### Automatic linking by verified address (`WORKEASY360_LINK_BY_VERIFIED_EMAIL`)
+
+Off by default, and best left off. In the other WorkEasy360 products it lets a sign-in link an unlinked account of the same organization when Workeasy360 says the address is verified (never across organizations, never an account already linked, audited). **Help Desk never links a staff account automatically, even with it on**, and every account a Workeasy360 sign-in can open is a staff account (an agent: `SUPER_ADMIN`, `ADMIN`, `AGENT`, `LIGHT_AGENT` or a custom role, any of which can carry administration or customer data; customers are refused as before). So turning it on changes nothing in Help Desk today: the answer is still `account_conflict`, the audit entry's reason says `staff_never_auto_linked`, and staff accounts link only through `link-workeasy360-user`.
 
 ## Registering Easy Help Desk with Workeasy360 (once per environment)
 
@@ -130,6 +153,7 @@ In the production image: `docker compose -f docker-compose.prod.yml exec api nod
 | `WORKEASY360_SIGN_IN_RATE_LIMIT` | yes | - | Sign-in starts and callbacks per client address per minute, each route; default 30. People behind one shared (NATed) address - an office - share that budget: raise it (for example 300) and the `rate_limited` message disappears |
 | `REALTIME_ACCESS_RECHECK_SECONDS` | yes | - | How often an open realtime socket re-checks its person's access (default 60) |
 | `WORKEASY360_SSO_ONLY` | yes | yes | `1`/`true`/`yes`/`on`. Default **on in production, off elsewhere**. While on, the API and worker **refuse to start** unless the first five are set |
+| `WORKEASY360_LINK_BY_VERIFIED_EMAIL` | yes | - | Default **off**. Never links a staff account in Help Desk, so it has no effect today ("Automatic linking by verified address") |
 
 `deploy/.env.example` holds all of them; `docker-compose.prod.yml` hands the same file to the API and the worker. In production the private key is loaded and parsed at boot, so a missing or unreadable key file stops the deployment from starting instead of failing requests later. Elsewhere it is read at first use; an unusable key then makes the sign-in routes answer `unavailable` and the entitlement checks behave like an outage of Workeasy360 (the last answer stands; with none, access continues) - never a 500. The refresh cookie and the Workeasy360 flow cookie are `__Host-` cookies in production; see "Cookie names" below.
 
@@ -264,7 +288,11 @@ Sessions opened before step 2 have no `sid`: a logout naming one sign-in cannot 
 
 With `WORKEASY360_SSO_ONLY` on, the API answers `403 PASSWORD_SIGN_IN_DISABLED` for agent `login`, `register`, `forgot-password`, `reset-password`, `change-password`, setting a password when creating a user, and `POST /users/:id/invite`; `GET /auth/register` reports `enabled: false`; and `GET /auth/methods` reports `{ password: false, workeasy360: true, workeasy360SignOut }`. The login page then shows only **Continue with Workeasy360** (no form, no register or forgot-password links, **never an automatic redirect**: the page itself starts nothing, whatever its query) and a message for each `sso_error` code. Opening any other agent page with no session at all starts the sign-in for the person ("Opening Easy Help Desk directly" above), except after a sign-out or within 60 seconds of the last automatic start. Customer portal sign-in, sign-up and password reset are unaffected.
 
-**Sessions that predate SSO-only.** Every refresh token records how its session was started (`PASSWORD` or `WORKEASY360`). In SSO-only mode an agent session in an organization bound to Workeasy360 whose user has no Workeasy360 identity is refused on every non-public route with `403 WORKEASY360_SIGN_IN_REQUIRED`, and `POST /auth/refresh` refuses password-method families and unlinked accounts with the same code (the frontend sends the person to the sign-in page with an explanation; signing in with Workeasy360 links the account by verified email and ends what the password issued). API keys stay at the organization level, development (SSO-only off) keeps today's behaviour, and customers' help center sessions are not affected. `link-workeasy360-organization` revokes the organization's existing agent refresh tokens when it binds it, and linking an account invalidates its outstanding password-reset and invitation links.
+**Sessions that predate SSO-only.** Every refresh token records how its session was started (`PASSWORD` or `WORKEASY360`). In SSO-only mode an agent session in an organization bound to Workeasy360 whose user has no Workeasy360 identity is refused on every non-public route with `403 WORKEASY360_SIGN_IN_REQUIRED`, and `POST /auth/refresh` refuses password-method families and unlinked accounts with the same code (the frontend sends the person to the sign-in page with an explanation; once an operator has linked the account with `link-workeasy360-user`, which ends what the password issued, signing in with Workeasy360 opens a normal session). API keys stay at the organization level, development (SSO-only off) keeps today's behaviour, and customers' help center sessions are not affected. `link-workeasy360-organization` revokes the organization's existing agent refresh tokens when it binds it.
+
+**How SSO-only retires agent passwords.** Linking leaves an agent's password hash, and any reset or invitation link already mailed, where they are. SSO-only mode is what retires them: agent `login`, `reset-password`, `change-password`, `register` and invitations are refused (`403 PASSWORD_SIGN_IN_DISABLED`), and every password-started session is refused at refresh, so a stored password opens nothing while the switch is on. Turning SSO-only off again brings the passwords back, which is the rollback. Deleting the hashes for good is a separate, later step, once the migration and linking have been tested; nothing in this release does it.
+
+**Rollout for an organization that already has agents:** bind it (`link-workeasy360-organization`), link each existing agent (`link-workeasy360-user`), then turn SSO-only on. Agents not linked yet are refused with `account_conflict` and see "contact your administrator to have it linked".
 
 **Customers keep passwords.** The help center has its own reset route, `POST /api/v1/portal/<slug>/auth/reset-password`, which accepts only a password-reset token of a customer of that help center (an agent's token, an invitation token or another help center's token look like an invalid link and are not consumed); the agent route stays off. The help center's forgot-password mails customers only.
 
@@ -286,3 +314,4 @@ Agent routes also now require an agent token: a help center customer's token (sa
 - A logout token that arrives while the callback for that very Workeasy360 sign-in is running: after the callback recorded the sign-in, the new session is refused at once, for requests and for its first refresh; before the record (between the code exchange and the record, milliseconds), the token finds nothing to end and the new session lives on. Ended `sid`s are not remembered to refuse such a sign-in.
 - Redis 6.2 or newer is required (`GETDEL`).
 - Entitlement answers and sign-in flows need Redis; without it sign-in fails closed (`unavailable`).
+- **No issuer-move command.** Links are on (issuer, `sub`) and a sign-in no longer re-links by address, so if `WORKEASY360_ISSUER` changes (for example `auth.` to `accounts.`) every existing agent is refused with `account_conflict` until relinked. `link-workeasy360-user` accepts the same `sub` under the new issuer (and refuses a different one), one account at a time; a bulk move is not written yet. Set the final issuer before the first sign-ins, or relink in the same release.

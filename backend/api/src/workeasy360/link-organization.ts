@@ -21,8 +21,8 @@ export interface LinkResult {
 /**
  * Binds an existing Help Desk organization to a Workeasy360 organization, so the first
  * Workeasy360 sign-in from that organization lands in it instead of creating a new, empty
- * one. Existing agents are linked to their Workeasy360 accounts at their own first sign-in
- * (by verified email); nothing else changes.
+ * one. Existing agents are not linked by it (nor by their address at sign-in): an operator
+ * links each one with link-workeasy360-user. Nothing else changes.
  */
 export async function linkOrganization(
   prisma: Pick<PrismaClient, 'organization' | 'refreshToken'>,

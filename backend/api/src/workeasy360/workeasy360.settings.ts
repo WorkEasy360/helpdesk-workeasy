@@ -51,6 +51,15 @@ export class Workeasy360Settings {
     return this.config.get('WORKEASY360_SSO_ONLY');
   }
 
+  /**
+   * WORKEASY360_LINK_BY_VERIFIED_EMAIL, off by default: may a sign-in link an existing account
+   * by its verified address? Help Desk never does so for a staff account, which is every account a
+   * sign-in opens, so it does not change the outcome (Workeasy360ProvisioningService).
+   */
+  get linkByVerifiedEmail(): boolean {
+    return this.config.get('WORKEASY360_LINK_BY_VERIFIED_EMAIL');
+  }
+
   /** Everything a sign-in needs is present (says nothing about whether the provider is reachable). */
   get configured(): boolean {
     return Boolean(

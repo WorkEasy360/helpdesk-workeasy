@@ -8,8 +8,8 @@ import { FakeWorkeasy360, type Identity } from './support/fake-workeasy360';
 /**
  * SSO-only: Workeasy360 is the only way agents sign in. Password sign-in, registration,
  * reset, change and invitations are refused; the customer portal is untouched; an
- * administrator can still pre-provision an agent, who signs in through Workeasy360 and is
- * linked by verified address.
+ * administrator can still pre-provision an agent, who is linked by an operator
+ * (link-workeasy360-user), never by their address.
  */
 
 const FRONTEND = 'http://localhost:3000';
@@ -37,6 +37,7 @@ describe('Workeasy360 as the only way in (e2e)', () => {
   let harness: Harness;
   let http: Server;
   let helpers: typeof import('./app.harness');
+  let linkUser: typeof import('../src/workeasy360/link-user').linkUser;
   const appKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 
   const pair = (response: request.Response, name: string): string | undefined =>
@@ -85,7 +86,19 @@ describe('Workeasy360 as the only way in (e2e)', () => {
     helpers = await import('./app.harness');
     harness = await helpers.createHarness();
     http = harness.app.getHttpServer() as Server;
+    ({ linkUser } = await import('../src/workeasy360/link-user'));
   }, 240_000);
+
+  /** link-workeasy360-user, as an operator runs it. */
+  const vouch = (email: string, subject: string) =>
+    linkUser(harness.prisma, {
+      email,
+      subject,
+      workeasy360OrganizationId: ORG_A,
+      issuer: provider.issuer,
+      actor: 'ops@workeasy360.test',
+      reason: 'confirmed with the person',
+    });
 
   beforeEach(async () => {
     await helpers.resetDatabase(harness.prisma, harness.redis);
@@ -195,7 +208,7 @@ describe('Workeasy360 as the only way in (e2e)', () => {
   }
 
   describe('administrators can still pre-provision agents', () => {
-    it('creates the agent without a password and without mailing anyone, and Workeasy360 sign-in links them by verified address', async () => {
+    it('creates the agent without a password and without mailing anyone; their sign-in is refused until an operator links them', async () => {
       const owned = await ownerSession();
       const { MailerService } = await import('../src/email/mailer.service');
       const mailer = harness.app.get(MailerService);
@@ -212,7 +225,13 @@ describe('Workeasy360 as the only way in (e2e)', () => {
       const stored = await harness.prisma.user.findUniqueOrThrow({ where: { id: created.body.data.id as string } });
       expect(stored.passwordHash).toBeNull();
 
-      const callback = await signIn({ ...owner, sub: 'sub-ada', email: 'ada@acme.example', name: 'Ada Agent' });
+      const ada = { ...owner, sub: 'sub-ada', email: 'ada@acme.example', name: 'Ada Agent' };
+      const refused = await signIn(ada);
+      expect(refused.headers['location']).toBe(`${FRONTEND}/login?sso_error=account_conflict`);
+      expect(await harness.prisma.externalIdentity.count({ where: { userId: stored.id } })).toBe(0);
+
+      await vouch('ada@acme.example', 'sub-ada');
+      const callback = await signIn(ada);
       expect(callback.headers['location']).toBe(`${FRONTEND}/dashboard`);
       const linked = await harness.prisma.user.findUniqueOrThrow({
         where: { id: stored.id },
@@ -334,12 +353,27 @@ describe('Workeasy360 as the only way in (e2e)', () => {
         .expect((r) => expect(r.body.error.code).toBe('WORKEASY360_SIGN_IN_REQUIRED'));
     });
 
-    it('signing in with Workeasy360 links the account by verified address and the old session stays refused', async () => {
+    it('is refused at Workeasy360 sign-in until an operator links the account; the link ends the old session and keeps no way back in by password', async () => {
       const old = await passwordEraAgent(true);
+      // The same address is not the same person: no merge, and the password-era session stays refused.
+      const refused = await signIn({ ...owner, email: 'old@old.example' });
+      expect(refused.headers['location']).toBe(`${FRONTEND}/login?sso_error=account_conflict`);
+      await request(http)
+        .post(apiPath('/auth/refresh'))
+        .set('Cookie', old.cookie)
+        .expect(403)
+        .expect((r) => expect(r.body.error.code).toBe('WORKEASY360_SIGN_IN_REQUIRED'));
+
+      await vouch('old@old.example', 'sub-owner');
       const callback = await signIn({ ...owner, email: 'old@old.example' });
       expect(callback.headers['location']).toBe(`${FRONTEND}/dashboard`);
       const identities = await harness.prisma.externalIdentity.findMany({ where: { userId: old.user.id } });
       expect(identities).toHaveLength(1);
+      // Password sign-in stays refused in SSO-only mode, whatever the stored password.
+      await request(http)
+        .post(apiPath('/auth/login'))
+        .send({ email: 'old@old.example', password: 'whatever-it-was-1' })
+        .expect(403);
       // The link revoked what the password issued...
       await request(http).post(apiPath('/auth/refresh')).set('Cookie', old.cookie).expect(401);
       // ...and the new session is a normal one.

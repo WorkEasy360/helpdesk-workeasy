@@ -173,11 +173,18 @@ const baseEnvSchema = z.object({
    * reset and invitations are refused. Defaults to on in production, off elsewhere.
    */
   WORKEASY360_SSO_ONLY: flag,
+  /**
+   * Off by default. A sign-in never merges into an existing account by its address; an operator
+   * links it (link-workeasy360-user). Help Desk never links a staff account automatically even
+   * with this on (docs/workeasy360-sso.md, "Automatic linking by verified address").
+   */
+  WORKEASY360_LINK_BY_VERIFIED_EMAIL: flag,
 });
 
 export const envSchema = baseEnvSchema.transform((env) => ({
   ...env,
   WORKEASY360_SSO_ONLY: env.WORKEASY360_SSO_ONLY ?? env.NODE_ENV === 'production',
+  WORKEASY360_LINK_BY_VERIFIED_EMAIL: env.WORKEASY360_LINK_BY_VERIFIED_EMAIL ?? false,
 }));
 
 export type Env = z.infer<typeof envSchema>;

@@ -26,8 +26,8 @@ export type AccessSubject =
  * disagree:
  *
  * 1. SSO-only: a session in an organization bound to Workeasy360 whose user has no Workeasy360
- *    identity (a password-era session) is refused - the person signs in with Workeasy360,
- *    which links the account by verified email.
+ *    identity (a password-era session) is refused - the person signs in with Workeasy360 once
+ *    an operator has linked the account (link-workeasy360-user; never by address).
  * 2. Otherwise Workeasy360 is asked (per person when the session has a `sub`, else per
  *    organization) on the entitlement cache cadence.
  */

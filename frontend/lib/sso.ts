@@ -59,7 +59,7 @@ const SSO_ERROR_MESSAGES: Record<Workeasy360SsoErrorCode, string> = {
     'Workeasy360 did not share an email address for your account, so Easy Help Desk cannot sign you in.',
   email_unverified: 'Verify your email address in Workeasy360, then sign in again.',
   account_conflict:
-    'An Easy Help Desk account for this address is already linked to a different Workeasy360 account, or belongs to a customer. Contact your administrator.',
+    'An Easy Help Desk account with this email address already exists, and it is not linked to this Workeasy360 account. Accounts are never joined automatically: contact your administrator to have it linked.',
   account_disabled: 'Your Easy Help Desk account is deactivated. Contact your administrator.',
   membership_inactive:
     'Your access to this Easy Help Desk workspace was removed. Contact your administrator.',

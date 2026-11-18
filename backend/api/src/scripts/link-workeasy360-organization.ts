@@ -22,8 +22,8 @@ async function main(): Promise<number> {
         : `"${result.organizationName}" was already linked to ${result.workeasy360OrganizationId}; nothing changed.`,
     );
     console.log(
-      'Its agents are linked to their Workeasy360 accounts at their first sign-in (by verified email). ' +
-        'Sessions already open pick the link up at their next refresh.',
+      'Its existing agents are not linked by address: link each one with link-workeasy360-user ' +
+        '(until then their Workeasy360 sign-in is refused with account_conflict). New people join at their first sign-in.',
     );
     return 0;
   } catch (error) {

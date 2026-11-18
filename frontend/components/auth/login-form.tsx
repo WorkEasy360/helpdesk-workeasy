@@ -219,7 +219,8 @@ export function LoginForm() {
         {signInRequired ? (
           <p role="status" className="mb-4 rounded-md bg-muted px-3 py-2 text-base">
             Your Easy Help Desk account now signs in with Workeasy360. Continue with Workeasy360
-            below: it links your account by your verified email address.
+            below. If your account is not linked to your Workeasy360 account yet, your
+            administrator links it for you.
           </p>
         ) : null}
         {ssoError ? (

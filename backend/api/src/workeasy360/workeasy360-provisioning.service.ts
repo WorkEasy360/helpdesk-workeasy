@@ -9,6 +9,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Workeasy360Settings } from './workeasy360.settings';
 import { SsoRefusal } from './sso-errors';
 
+/** Written when a sign-in finds an unlinked account with the same address and refuses it. */
+export const LINK_REFUSED_ACTION = 'user.workeasy360_link_refused';
+
 /** Shown until an owner renames it, when the token carries no organization name. */
 export const FALLBACK_ORGANIZATION_NAME = 'My organization';
 
@@ -19,8 +22,6 @@ export interface ProvisionedSignIn {
   organizationId: string;
   /** This sign-in created the organization (and its first person is SUPER_ADMIN). */
   organizationCreated: boolean;
-  /** This sign-in linked an existing local account to the Workeasy360 identity. */
-  linked: boolean;
   /** This sign-in created the person. */
   userCreated: boolean;
 }
@@ -29,8 +30,10 @@ export interface ProvisionedSignIn {
  * Turns verified Workeasy360 claims into an organization and a person.
  *
  * Who someone is comes from (issuer, sub) inside the organization bound to the token's
- * `organization_id`; the email is profile data, used to link an existing local account only
- * when Workeasy360 says it verified the address. Both are already verified (the OIDC client),
+ * `organization_id`; the email is profile data. A sign-in never joins an existing local account
+ * by its address: an account with the same address that is not linked to this (issuer, sub) is
+ * `account_conflict`, and an operator links it with `link-workeasy360-user` (link-user.ts).
+ * Both are already verified (the OIDC client),
  * and Workeasy360 has already checked membership, product entitlement and seat before it
  * issued the token, so this decides only how the result maps onto Help Desk's own rows.
  *
@@ -133,7 +136,6 @@ export class Workeasy360ProvisioningService {
       userId: created.userId,
       organizationId: created.organizationId,
       organizationCreated: true,
-      linked: false,
       userCreated: true,
     };
   }
@@ -168,15 +170,15 @@ export class Workeasy360ProvisioningService {
         data: { lastLoginAt: new Date(), ...(claims.email ? { email: claims.email.toLowerCase() } : {}) },
       });
       await this.touchLogin(organizationId, user.id);
-      return { userId: user.id, organizationId, organizationCreated: false, linked: false, userCreated: false };
+      return { userId: user.id, organizationId, organizationCreated: false, userCreated: false };
     }
 
-    // 2. Unknown account: it needs a verified address either to link or to create.
+    // 2. Unknown account: it needs a verified address to create a person, or to be told apart.
     const email = this.verifiedEmail(claims);
 
     const existing = await this.prisma.user.findUnique({
       where: { organizationId_email: { organizationId, email } },
-      select: { id: true, type: true, isActive: true, deletedAt: true, emailVerifiedAt: true },
+      select: { id: true, type: true, isActive: true, deletedAt: true },
     });
     if (existing) {
       if (!existing.isActive || existing.deletedAt) {
@@ -194,8 +196,7 @@ export class Workeasy360ProvisioningService {
         // Already linked to a different Workeasy360 account.
         throw new SsoRefusal('account_conflict', `user ${existing.id} is linked to another subject`);
       }
-      await this.linkExisting(organizationId, existing.id, existing.emailVerifiedAt, { issuer, subject, email });
-      return { userId: existing.id, organizationId, organizationCreated: false, linked: true, userCreated: false };
+      return this.refuseUnlinkedAccount(organizationId, existing.id, issuer, subject);
     }
 
     // 3. Nobody by that address: a new agent with the default role and no password.
@@ -223,43 +224,49 @@ export class Workeasy360ProvisioningService {
       select: { id: true },
     });
     await this.accessControl.invalidateUser(organizationId, user.id);
-    return { userId: user.id, organizationId, organizationCreated: false, linked: false, userCreated: true };
+    return { userId: user.id, organizationId, organizationCreated: false, userCreated: true };
   }
 
   /**
-   * Links a local account to a Workeasy360 identity. Help Desk never verified this address
-   * itself, so whoever chose the account's password may not be the person Workeasy360 just
-   * vouched for (an account pre-registered under someone else's address). From the link on
-   * the account is reached through Workeasy360 only: the password goes and every refresh
-   * token it issued is revoked.
+   * An agent of this organization has the signing-in person's address but is not linked to
+   * them. That is never merged automatically: the same address is not proof of the same person
+   * (an address registered here by someone else, a mailbox reused), and a link opens the
+   * account with whatever role it holds. The account is left exactly as it is; the refusal is
+   * audited with the (issuer, sub) that asked, and an operator who has confirmed the person
+   * links them with `link-workeasy360-user`.
+   *
+   * `WORKEASY360_LINK_BY_VERIFIED_EMAIL` is the other products' opt-in for linking a same-tenant,
+   * unlinked account on a verified address. Help Desk never applies it to staff, and every account
+   * a Workeasy360 sign-in can open is staff (an agent: SUPER_ADMIN, ADMIN, AGENT, LIGHT_AGENT or a
+   * custom role, any of which can carry administration or customer data; customers are refused
+   * above). So with the setting on the answer is the same; only the audited reason differs.
    */
-  private async linkExisting(
+  private async refuseUnlinkedAccount(
     organizationId: string,
     userId: string,
-    emailVerifiedAt: Date | null,
-    identity: { issuer: string; subject: string; email: string },
-  ): Promise<void> {
-    const now = new Date();
-    await this.prisma.$transaction([
-      this.prisma.externalIdentity.create({
-        data: { organizationId, userId, issuer: identity.issuer, subject: identity.subject, email: identity.email },
-      }),
-      this.prisma.user.update({
-        where: { id: userId },
-        data: { passwordHash: null, emailVerifiedAt: emailVerifiedAt ?? now, lastLoginAt: now },
-      }),
-      this.prisma.refreshToken.updateMany({
-        where: { userId, revokedAt: null },
-        data: { revokedAt: now },
-      }),
-      // A reset or invitation link mailed before the link would set a password on an account
-      // that is now reached through Workeasy360 only: it must not outlive the link.
-      this.prisma.verificationToken.updateMany({
-        where: { userId, type: { in: ['PASSWORD_RESET', 'INVITE'] }, usedAt: null },
-        data: { usedAt: now },
-      }),
-    ]);
-    await this.accessControl.invalidateUser(organizationId, userId);
+    issuer: string,
+    subject: string,
+  ): Promise<never> {
+    const reason = this.settings.linkByVerifiedEmail ? 'staff_never_auto_linked' : 'email_linking_off';
+    try {
+      await TenantContext.run(organizationId, () =>
+        this.audit.record({
+          organizationId,
+          actorId: null,
+          actorType: 'SYSTEM',
+          action: LINK_REFUSED_ACTION,
+          entity: 'User',
+          entityId: userId,
+          newValue: { issuer, subject, reason },
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(`Audit entry for a refused Workeasy360 link failed: ${error instanceof Error ? error.name : 'error'}`);
+    }
+    throw new SsoRefusal(
+      'account_conflict',
+      `user ${userId} has this address but is not linked (${reason}); an operator links it with link-workeasy360-user`,
+    );
   }
 
   private async touchLogin(organizationId: string, userId: string): Promise<void> {
@@ -298,9 +305,6 @@ export class Workeasy360ProvisioningService {
             entityId: result.organizationId,
             newValue: { workeasy360OrganizationId: claims.organization_id },
           });
-        }
-        if (result.linked) {
-          await this.audit.record({ ...base, action: 'user.workeasy360_linked', newValue: { subject: claims.sub } });
         }
         await this.audit.record({ ...base, action: 'auth.workeasy360_sign_in', newValue: { aal: claims['aal'] ?? null } });
       });

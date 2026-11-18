@@ -54,6 +54,12 @@ describe('environment validation', () => {
       expect(validateEnv({ ...production, WORKEASY360_SSO_ONLY: '0' }).WORKEASY360_SSO_ONLY).toBe(false);
     });
 
+    it('keeps linking by verified address off unless it is switched on, in production too', () => {
+      expect(validateEnv(production).WORKEASY360_LINK_BY_VERIFIED_EMAIL).toBe(false);
+      expect(validateEnv({ ...production, WORKEASY360_LINK_BY_VERIFIED_EMAIL: '' }).WORKEASY360_LINK_BY_VERIFIED_EMAIL).toBe(false);
+      expect(validateEnv({ ...production, WORKEASY360_LINK_BY_VERIFIED_EMAIL: 'true' }).WORKEASY360_LINK_BY_VERIFIED_EMAIL).toBe(true);
+    });
+
     it.each([
       ['WORKEASY360_ISSUER'],
       ['WORKEASY360_CLIENT_ID'],

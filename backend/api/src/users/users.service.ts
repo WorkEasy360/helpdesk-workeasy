@@ -92,8 +92,9 @@ export class UsersService {
 
   async create(actor: AuthenticatedUser, input: CreateUserInput) {
     // Workeasy360 is the only way in: an administrator pre-provisions the person (name,
-    // roles, departments) and they sign in through Workeasy360, which links the account by
-    // its verified address. A password cannot be set for them, and nothing is mailed.
+    // roles, departments); an operator links the account to their Workeasy360 account
+    // (link-workeasy360-user), never their address. A password cannot be set for them, and
+    // nothing is mailed.
     if (input.password) {
       this.workeasy360.assertPasswordSignInAllowed();
     }
