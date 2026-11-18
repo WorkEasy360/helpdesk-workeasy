@@ -102,14 +102,14 @@ export function RuleFormDialog({ open, onOpenChange, rule, escalation = false }:
             <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </Field>
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Conditions</h3>
+            <h3 className="text-base font-semibold">Conditions</h3>
             <ConditionEditor value={conditions} onChange={setConditions} />
           </section>
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Actions</h3>
+            <h3 className="text-base font-semibold">Actions</h3>
             <ActionEditor value={actions} onChange={setActions} />
           </section>
-          {error ? <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+          {error ? <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">{error}</p> : null}
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

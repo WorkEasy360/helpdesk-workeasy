@@ -53,7 +53,7 @@ export function PortalArticleView({ slug, articleSlug }: { slug: string; article
 
   return (
     <>
-      <Link className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline" href={`/help/${slug}/kb`}>
+      <Link className="inline-flex items-center gap-1 text-base text-muted-foreground hover:underline" href={`/help/${slug}/kb`}>
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
         All articles
       </Link>
@@ -71,11 +71,11 @@ export function PortalArticleView({ slug, articleSlug }: { slug: string; article
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Was this helpful?</CardTitle>
+          <CardTitle className="text-md">Was this helpful?</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {voted !== null ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-base text-muted-foreground">
               You marked this article as {voted ? 'helpful' : 'not helpful'}. You can change your answer.
             </p>
           ) : null}
@@ -105,13 +105,13 @@ export function PortalArticleView({ slug, articleSlug }: { slug: string; article
       {data.related.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Related articles</CardTitle>
+            <CardTitle className="text-md">Related articles</CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">
               {data.related.map((related) => (
                 <li key={related.id}>
-                  <Link className="text-sm hover:underline" href={`/help/${slug}/kb/${related.slug}`}>
+                  <Link className="text-base hover:underline" href={`/help/${slug}/kb/${related.slug}`}>
                     {related.title}
                   </Link>
                 </li>

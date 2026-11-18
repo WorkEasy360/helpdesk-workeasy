@@ -69,7 +69,7 @@ export default function ApiKeysPage() {
       {issued ? (
         <Card className="border-primary">
           <CardHeader>
-            <CardTitle className="text-base">Copy this key now</CardTitle>
+            <CardTitle className="text-md">Copy this key now</CardTitle>
             <CardDescription>
               Send it as <code>X-Api-Key</code>. It is stored hashed, so this is the only time it can be shown.
             </CardDescription>
@@ -97,7 +97,7 @@ export default function ApiKeysPage() {
       {creating ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">New API key</CardTitle>
+            <CardTitle className="text-md">New API key</CardTitle>
             <CardDescription>
               A key carries a role, so an integration can do exactly what that role allows — no more.
             </CardDescription>
@@ -136,7 +136,7 @@ export default function ApiKeysPage() {
                   </Select>
                 </Field>
               </div>
-              {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+              {error ? <p role="alert" className="text-base text-destructive">{error}</p> : null}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setCreating(false)}>
                   Cancel
@@ -186,7 +186,7 @@ export default function ApiKeysPage() {
                       {key.prefix}…
                     </p>
                   </TD>
-                  <TD className="text-sm text-muted-foreground">{key.role.name}</TD>
+                  <TD className="text-base text-muted-foreground">{key.role.name}</TD>
                   <TD className="text-xs text-muted-foreground">
                     {key.lastUsedAt ? formatDateTime(key.lastUsedAt) : 'Never'}
                   </TD>

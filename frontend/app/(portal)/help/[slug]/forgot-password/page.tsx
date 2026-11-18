@@ -38,7 +38,7 @@ export default function PortalForgotPasswordPage({ params }: { params: Promise<{
         </CardHeader>
         <CardContent>
           {sent ? (
-            <p className="rounded-md bg-muted px-3 py-4 text-sm">
+            <p className="rounded-md bg-muted px-3 py-4 text-base">
               If that address has an account, the link is on its way. It expires in an hour.
             </p>
           ) : (
@@ -52,7 +52,7 @@ export default function PortalForgotPasswordPage({ params }: { params: Promise<{
                 />
               </Field>
               {error ? (
-                <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
                   {error}
                 </p>
               ) : null}
@@ -61,7 +61,7 @@ export default function PortalForgotPasswordPage({ params }: { params: Promise<{
               </Button>
             </form>
           )}
-          <p className="mt-4 text-sm text-muted-foreground">
+          <p className="mt-4 text-base text-muted-foreground">
             <Link className="hover:underline" href={`/help/${slug}/login`}>
               Back to sign in
             </Link>

@@ -218,7 +218,7 @@ export default function DepartmentsSettingsPage() {
             <Field label="Description" htmlFor="description" error={errors.description?.message}>
               <Textarea rows={2} {...register('description')} />
             </Field>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-base">
               <input
                 type="checkbox"
                 className="h-4 w-4 rounded border-input"
@@ -229,7 +229,7 @@ export default function DepartmentsSettingsPage() {
               Default department for new tickets
             </label>
             {errors.root ? (
-              <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
                 {errors.root.message}
               </p>
             ) : null}

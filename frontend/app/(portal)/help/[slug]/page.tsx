@@ -36,7 +36,7 @@ export default function HelpCenterHome({ params }: { params: Promise<{ slug: str
       <section className="rounded-lg border border-border bg-background p-6">
         <h1 className="text-xl font-semibold tracking-tight">{config.data.name}</h1>
         {config.data.welcomeMessage ? (
-          <p className="mt-1 text-sm text-muted-foreground">{config.data.welcomeMessage}</p>
+          <p className="mt-1 text-base text-muted-foreground">{config.data.welcomeMessage}</p>
         ) : null}
         {config.data.kbEnabled ? (
           <div className="mt-4">
@@ -49,14 +49,14 @@ export default function HelpCenterHome({ params }: { params: Promise<{ slug: str
         {config.data.kbEnabled ? (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
+              <CardTitle className="flex items-center gap-2 text-md">
                 <BookOpen className="h-4 w-4" aria-hidden />
                 Knowledge base
               </CardTitle>
               <CardDescription>Guides and answers, written by the support team.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Link className="inline-flex items-center gap-1 text-sm font-medium hover:underline" href={`/help/${slug}/kb`}>
+              <Link className="inline-flex items-center gap-1 text-base font-medium hover:underline" href={`/help/${slug}/kb`}>
                 Browse articles <ArrowRight className="h-3.5 w-3.5" aria-hidden />
               </Link>
             </CardContent>
@@ -66,7 +66,7 @@ export default function HelpCenterHome({ params }: { params: Promise<{ slug: str
         {config.data.allowTicketSubmission ? (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
+              <CardTitle className="flex items-center gap-2 text-md">
                 <Ticket className="h-4 w-4" aria-hidden />
                 Need a hand?
               </CardTitle>
@@ -74,7 +74,7 @@ export default function HelpCenterHome({ params }: { params: Promise<{ slug: str
             </CardHeader>
             <CardContent>
               <Link
-                className="inline-flex items-center gap-1 text-sm font-medium hover:underline"
+                className="inline-flex items-center gap-1 text-base font-medium hover:underline"
                 href={`/help/${slug}/submit`}
               >
                 Submit a request <ArrowRight className="h-3.5 w-3.5" aria-hidden />
@@ -86,7 +86,7 @@ export default function HelpCenterHome({ params }: { params: Promise<{ slug: str
         {config.data.communityEnabled ? (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
+              <CardTitle className="flex items-center gap-2 text-md">
                 <MessagesSquare className="h-4 w-4" aria-hidden />
                 Community
               </CardTitle>
@@ -94,7 +94,7 @@ export default function HelpCenterHome({ params }: { params: Promise<{ slug: str
             </CardHeader>
             <CardContent>
               <Link
-                className="inline-flex items-center gap-1 text-sm font-medium hover:underline"
+                className="inline-flex items-center gap-1 text-base font-medium hover:underline"
                 href={`/help/${slug}/community`}
               >
                 Join the discussion <ArrowRight className="h-3.5 w-3.5" aria-hidden />
@@ -108,14 +108,14 @@ export default function HelpCenterHome({ params }: { params: Promise<{ slug: str
         <section className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Categories</CardTitle>
+              <CardTitle className="text-md">Categories</CardTitle>
             </CardHeader>
             <CardContent>
               {categories.data && categories.data.length > 0 ? (
                 <ul className="space-y-2">
                   {categories.data.map((category) => (
                     <li key={category.id}>
-                      <Link className="text-sm hover:underline" href={`/help/${slug}/kb?category=${category.id}`}>
+                      <Link className="text-base hover:underline" href={`/help/${slug}/kb?category=${category.id}`}>
                         {category.name}
                       </Link>
                       <span className="ml-2 text-xs text-muted-foreground">
@@ -125,28 +125,28 @@ export default function HelpCenterHome({ params }: { params: Promise<{ slug: str
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-muted-foreground">No categories published yet.</p>
+                <p className="text-base text-muted-foreground">No categories published yet.</p>
               )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Most read</CardTitle>
+              <CardTitle className="text-md">Most read</CardTitle>
             </CardHeader>
             <CardContent>
               {popular.data && popular.data.items.length > 0 ? (
                 <ul className="space-y-2">
                   {popular.data.items.map((article) => (
                     <li key={article.id}>
-                      <Link className="text-sm hover:underline" href={`/help/${slug}/kb/${article.slug}`}>
+                      <Link className="text-base hover:underline" href={`/help/${slug}/kb/${article.slug}`}>
                         {article.title}
                       </Link>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-muted-foreground">No articles published yet.</p>
+                <p className="text-base text-muted-foreground">No articles published yet.</p>
               )}
             </CardContent>
           </Card>
@@ -154,7 +154,7 @@ export default function HelpCenterHome({ params }: { params: Promise<{ slug: str
       ) : null}
 
       {session.status === 'anonymous' ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-base text-muted-foreground">
           Already raised a request?{' '}
           <Link className="font-medium hover:underline" href={`/help/${slug}/login`}>
             Sign in

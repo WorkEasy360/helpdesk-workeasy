@@ -6,27 +6,33 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
-  {
-    variants: {
-      variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        outline: 'border border-input bg-background hover:bg-muted',
-        ghost: 'hover:bg-muted',
-        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-        link: 'text-primary underline-offset-4 hover:underline',
-      },
-      size: {
-        default: 'h-9 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-xs',
-        lg: 'h-10 px-6',
-        icon: 'h-9 w-9',
-      },
+/**
+ * Buttons are the `c-btn*` classes from app/components.css — see
+ * docs/DESIGN-SYSTEM.md. One primary (green) button per view; everything else is
+ * secondary, ghost or navy.
+ */
+const buttonVariants = cva('', {
+  variants: {
+    variant: {
+      /** Green. The one primary action on the view. */
+      default: 'c-btn-primary',
+      /** Outlined. The common case. */
+      outline: 'c-btn',
+      ghost: 'c-btn-ghost',
+      destructive: 'c-btn-danger',
+      /** Navy — a high-emphasis action that is not *the* primary one. */
+      dark: 'c-btn-dark',
+      link: 'inline-flex items-center gap-1 text-base font-medium text-link underline underline-offset-2',
     },
-    defaultVariants: { variant: 'default', size: 'default' },
+    size: {
+      default: '',
+      sm: 'c-btn-sm',
+      icon: 'c-btn-icon',
+      'icon-sm': 'c-btn-icon c-btn-sm',
+    },
   },
-);
+  defaultVariants: { variant: 'default', size: 'default' },
+});
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
@@ -36,11 +42,14 @@ export interface ButtonProps
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, loading = false, children, disabled, ...props }, ref) => {
+  (
+    { className, variant, size, asChild = false, loading = false, children, disabled, ...props },
+    ref,
+  ) => {
     const Comp = asChild ? Slot : 'button';
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn(buttonVariants({ variant, size }), className)}
         ref={ref}
         disabled={disabled ?? loading}
         aria-busy={loading || undefined}

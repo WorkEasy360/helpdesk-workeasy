@@ -7,10 +7,10 @@ import type { TicketPriorityRef, TicketStatusRef } from '@/types/api';
 export function StatusBadge({ status }: { status: TicketStatusRef }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium"
+      className="c-badge"
       style={{ borderColor: `${status.color}55`, backgroundColor: `${status.color}14`, color: status.color }}
     >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.color }} aria-hidden />
+      <span className="c-dot" aria-hidden />
       {status.name}
     </span>
   );
@@ -28,7 +28,7 @@ export function PriorityBadge({ priority }: { priority: TicketPriorityRef }) {
 export function TagChip({ tag }: { tag: { name: string; color: string } }) {
   return (
     <span
-      className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium"
+      className="c-tag"
       style={{ backgroundColor: `${tag.color}1f`, color: tag.color }}
     >
       {tag.name}
@@ -45,18 +45,28 @@ import type { SlaFields } from '@/types/api';
 export function SlaBadge({ ticket }: { ticket: SlaFields & { resolvedAt: string | null } }) {
   if (!ticket.slaPolicy || ticket.resolvedAt) return null;
   if (ticket.slaPausedAt) {
-    return <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">SLA paused</span>;
+    return <span className="c-badge">SLA paused</span>;
   }
   const awaitingFirst = !ticket.firstResponseAt;
   const breached = awaitingFirst ? ticket.firstResponseBreachedAt : ticket.resolutionBreachedAt;
   const due = awaitingFirst ? ticket.firstResponseDueAt : ticket.resolutionDueAt;
   if (breached || (due && new Date(due) < new Date())) {
-    return <span className="rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-medium text-red-800 dark:bg-red-950 dark:text-red-300">SLA breached</span>;
+    return (
+      <span className="c-badge" data-tone="danger">
+        <span className="c-dot" aria-hidden />
+        SLA breached
+      </span>
+    );
   }
   if (!due) return null;
   const minutes = Math.round((new Date(due).getTime() - Date.now()) / 60_000);
   if (minutes <= 60) {
-    return <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300">{awaitingFirst ? 'Reply' : 'Due'} in {minutes}m</span>;
+    return (
+      <span className="c-badge" data-tone="warning">
+        <span className="c-dot" aria-hidden />
+        {awaitingFirst ? 'Reply' : 'Due'} in {minutes}m
+      </span>
+    );
   }
   return null;
 }

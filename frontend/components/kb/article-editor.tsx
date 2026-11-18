@@ -216,7 +216,7 @@ export function ArticleEditor({ id }: { id: string | null }) {
             </CardHeader>
             <CardContent className="space-y-2">
               {feedback.data.map((entry) => (
-                <div key={entry.id} className="rounded-md border border-border px-3 py-2 text-sm">
+                <div key={entry.id} className="rounded-md border border-border px-3 py-2 text-base">
                   <div className="flex items-center gap-2">
                     <Badge variant={entry.isHelpful ? 'success' : 'warning'}>
                       {entry.isHelpful ? 'Helpful' : 'Not helpful'}
@@ -279,7 +279,7 @@ export function ArticleEditor({ id }: { id: string | null }) {
               />
             </Field>
 
-            {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+            {error ? <p role="alert" className="text-base text-destructive">{error}</p> : null}
 
             <div className="space-y-2">
               <Button type="submit" className="w-full" loading={save.isPending}>
@@ -325,7 +325,7 @@ export function ArticleEditor({ id }: { id: string | null }) {
             <CardHeader>
               <CardTitle>Performance</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 text-sm text-muted-foreground">
+            <CardContent className="space-y-1 text-base text-muted-foreground">
               <p>{article.data.viewCount} view(s)</p>
               <p>
                 {helpful} helpful · {notHelpful} not helpful

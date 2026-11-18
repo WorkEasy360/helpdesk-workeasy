@@ -244,7 +244,7 @@ export function ChannelDialog({
 
           {secretFields.length > 0 ? (
             <div className="space-y-3 rounded-md border border-border p-3">
-              <p className="text-sm font-medium">Credentials</p>
+              <p className="text-base font-medium">Credentials</p>
               <p className="text-xs text-muted-foreground">
                 Stored encrypted and never shown again. Leave a field blank to keep what is saved.
               </p>
@@ -284,7 +284,7 @@ export function ChannelDialog({
             />
           </Field>
 
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-base">
             <input
               type="checkbox"
               className="h-4 w-4"
@@ -294,7 +294,7 @@ export function ChannelDialog({
             Active
           </label>
 
-          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+          {error ? <p role="alert" className="text-base text-destructive">{error}</p> : null}
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

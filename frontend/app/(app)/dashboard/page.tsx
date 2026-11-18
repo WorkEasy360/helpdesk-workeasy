@@ -10,13 +10,13 @@ import { departmentsService, usersService } from '@/services/settings.service';
 import { analyticsService } from '@/services/analytics.service';
 import { ticketsService } from '@/services/tickets.service';
 import { useAuthStore } from '@/stores/auth.store';
-import { PageHeader } from '@/components/layout/page-header';
+import { PageHeader, StatCard, StatGrid } from '@/components/ui/page';
 import {
   ReportFilters,
   toQuery,
   type ReportFilterValue,
 } from '@/components/reports/report-filters';
-import { StatTile, formatMinutes, formatPercent } from '@/components/reports/stat-tile';
+import { formatMinutes, formatPercent } from '@/components/reports/stat-tile';
 import { TrendChart } from '@/components/reports/trend-chart';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState, LoadingState } from '@/components/ui/states';
@@ -52,32 +52,6 @@ function createdWindow(
     default:
       return { from: daysBack(29), to: today };
   }
-}
-
-function StatCard({
-  label,
-  value,
-  loading,
-  href,
-}: {
-  label: string;
-  value: number | undefined;
-  loading: boolean;
-  href: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted/50"
-    >
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      {loading ? (
-        <div className="mt-2 h-7 w-16 animate-pulse rounded bg-muted" aria-hidden />
-      ) : (
-        <p className="mt-1 text-2xl font-semibold tabular-nums">{value ?? 0}</p>
-      )}
-    </Link>
-  );
 }
 
 export default function DashboardPage() {
@@ -155,11 +129,11 @@ export default function DashboardPage() {
         description="How the team and the SLA are doing, at a glance."
       />
 
-      <section aria-label="Overview" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <StatGrid aria-label="Overview" role="group">
         {can(PERMISSIONS.CONTACT_READ) ? (
           <StatCard
             label="Contacts"
-            value={contacts.data?.meta.total}
+            value={contacts.data?.meta.total ?? 0}
             loading={contacts.isPending}
             href="/customers"
           />
@@ -167,7 +141,7 @@ export default function DashboardPage() {
         {can(PERMISSIONS.ACCOUNT_READ) ? (
           <StatCard
             label="Accounts"
-            value={accounts.data?.meta.total}
+            value={accounts.data?.meta.total ?? 0}
             loading={accounts.isPending}
             href="/accounts"
           />
@@ -175,7 +149,7 @@ export default function DashboardPage() {
         {can(PERMISSIONS.USER_READ) ? (
           <StatCard
             label="Agents"
-            value={users.data?.meta.total}
+            value={users.data?.meta.total ?? 0}
             loading={users.isPending}
             href="/settings/users"
           />
@@ -183,12 +157,12 @@ export default function DashboardPage() {
         {can(PERMISSIONS.DEPARTMENT_READ) ? (
           <StatCard
             label="Departments"
-            value={departments.data?.length}
+            value={departments.data?.length ?? 0}
             loading={departments.isPending}
             href="/settings/departments"
           />
         ) : null}
-      </section>
+      </StatGrid>
 
       {!can(PERMISSIONS.REPORT_READ) ? null : (
         <>
@@ -207,69 +181,63 @@ export default function DashboardPage() {
             />
           ) : (
             <>
-              <section
-                aria-label="Ticket volume"
-                className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-              >
-                <Link href={ticketLinks.created}>
-                  <StatTile label="Created" value={String(dashboard.data.tickets.created)} />
-                </Link>
-                <Link href={ticketLinks.resolved}>
-                  <StatTile label="Resolved" value={String(dashboard.data.tickets.resolved)} />
-                </Link>
-                <Link href={ticketLinks.open}>
-                  <StatTile
-                    label="Open now"
-                    value={String(dashboard.data.tickets.open)}
-                    sub={`${dashboard.data.tickets.unassigned} unassigned`}
-                    tone={dashboard.data.tickets.unassigned > 0 ? 'warning' : 'default'}
-                  />
-                </Link>
-                <Link href={ticketLinks.overdue}>
-                  <StatTile
-                    label="Overdue"
-                    value={String(dashboard.data.tickets.overdue)}
-                    tone={dashboard.data.tickets.overdue > 0 ? 'danger' : 'default'}
-                  />
-                </Link>
+              <StatGrid aria-label="Ticket volume" role="group">
+                <StatCard
+                  label="Created"
+                  value={dashboard.data.tickets.created}
+                  href={ticketLinks.created}
+                />
+                <StatCard
+                  label="Resolved"
+                  value={dashboard.data.tickets.resolved}
+                  href={ticketLinks.resolved}
+                />
+                <StatCard
+                  label="Open now"
+                  value={dashboard.data.tickets.open}
+                  sub={`${dashboard.data.tickets.unassigned} unassigned`}
+                  tone={dashboard.data.tickets.unassigned > 0 ? 'warning' : 'default'}
+                  href={ticketLinks.open}
+                />
+                <StatCard
+                  label="Overdue"
+                  value={dashboard.data.tickets.overdue}
+                  tone={dashboard.data.tickets.overdue > 0 ? 'danger' : 'default'}
+                  href={ticketLinks.overdue}
+                />
                 {ticketSummary.data ? (
-                  <Link href={ticketLinks.mine}>
-                    <StatTile
-                      label="Assigned to me"
-                      value={String(ticketSummary.data.assignedToMe)}
-                    />
-                  </Link>
+                  <StatCard
+                    label="Assigned to me"
+                    value={ticketSummary.data.assignedToMe}
+                    href={ticketLinks.mine}
+                  />
                 ) : null}
                 {ticketSummary.data ? (
-                  <Link href={ticketLinks.unassigned}>
-                    <StatTile
-                      label="Unassigned"
-                      value={String(ticketSummary.data.unassigned)}
-                      tone={ticketSummary.data.unassigned > 0 ? 'warning' : 'default'}
-                    />
-                  </Link>
+                  <StatCard
+                    label="Unassigned"
+                    value={ticketSummary.data.unassigned}
+                    tone={ticketSummary.data.unassigned > 0 ? 'warning' : 'default'}
+                    href={ticketLinks.unassigned}
+                  />
                 ) : null}
-              </section>
+              </StatGrid>
 
-              <section
-                aria-label="SLA and satisfaction"
-                className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-              >
-                <StatTile
+              <StatGrid aria-label="SLA and satisfaction" role="group">
+                <StatCard
                   label="Avg first response"
                   value={formatMinutes(dashboard.data.tickets.avgFirstResponseMinutes)}
                 />
-                <StatTile
+                <StatCard
                   label="Avg resolution"
                   value={formatMinutes(dashboard.data.tickets.avgResolutionMinutes)}
                 />
-                <StatTile
+                <StatCard
                   label="SLA compliance"
                   value={formatPercent(dashboard.data.sla.resolutionCompliance)}
                   sub={`${dashboard.data.sla.breachedOpen} open tickets already breached`}
                   tone={dashboard.data.sla.breachedOpen > 0 ? 'danger' : 'default'}
                 />
-                <StatTile
+                <StatCard
                   label="CSAT"
                   value={
                     dashboard.data.csat.average !== null
@@ -282,7 +250,7 @@ export default function DashboardPage() {
                       : 'No responses yet'
                   }
                 />
-              </section>
+              </StatGrid>
 
               <Card>
                 <CardHeader>
@@ -293,9 +261,9 @@ export default function DashboardPage() {
                   <TrendChart
                     data={dashboard.data.trend}
                     series={[
-                      { key: 'created', label: 'Created', colour: '#3b82f6' },
-                      { key: 'resolved', label: 'Resolved', colour: '#10b981' },
-                      { key: 'reopened', label: 'Reopened', colour: '#f59e0b' },
+                      { key: 'created', label: 'Created' },
+                      { key: 'resolved', label: 'Resolved' },
+                      { key: 'reopened', label: 'Reopened' },
                     ]}
                   />
                 </CardContent>
@@ -312,7 +280,7 @@ export default function DashboardPage() {
                       {dashboard.data.topAgents.map((agent) => (
                         <li
                           key={agent.agentId}
-                          className="flex items-center justify-between py-2 text-sm"
+                          className="flex items-center justify-between py-2 text-base"
                         >
                           <span>{agent.name}</span>
                           <span className="text-muted-foreground">

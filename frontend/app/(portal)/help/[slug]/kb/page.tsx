@@ -66,13 +66,13 @@ export default function PortalKnowledgeBase({ params }: { params: Promise<{ slug
             {articles.data.items.map((article) => (
               <Card key={article.id}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">
+                  <CardTitle className="text-md">
                     <Link className="hover:underline" href={`/help/${slug}/kb/${article.slug}`}>
                       {article.title}
                     </Link>
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-1 text-sm text-muted-foreground">
+                <CardContent className="space-y-1 text-base text-muted-foreground">
                   {article.summary ? <p>{article.summary}</p> : null}
                   <p className="text-xs">
                     {article.category ? `${article.category.name} · ` : ''}

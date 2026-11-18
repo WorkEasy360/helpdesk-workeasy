@@ -39,6 +39,11 @@ export const aiSettingsSchema = z.object({
   intentEnabled: z.boolean().optional(),
   suggestedReplyEnabled: z.boolean().optional(),
   autoAnalyse: z.boolean().optional(),
+  /**
+   * Assistant questions per day for the whole organization; 0 means no limit. The
+   * assistant is always on, so this is a spend guard and never a way to switch it off.
+   */
+  assistantDailyLimit: z.coerce.number().int().min(0).max(100_000).optional(),
   monthlyTokenBudget: z.coerce.number().int().min(0).max(1_000_000_000).optional(),
   promptGuidance: optionalField(z.string().trim().max(2000)),
 });

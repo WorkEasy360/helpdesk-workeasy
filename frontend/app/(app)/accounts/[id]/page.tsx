@@ -20,8 +20,8 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-3 gap-2 border-b border-border py-2 last:border-0">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="col-span-2 text-sm">{children}</dd>
+      <dt className="text-base text-muted-foreground">{label}</dt>
+      <dd className="col-span-2 text-base">{children}</dd>
     </div>
   );
 }
@@ -95,7 +95,7 @@ export default function AccountDetailPage() {
               <DetailRow label="Created">{formatDateTime(data.createdAt)}</DetailRow>
             </dl>
             {data.description ? (
-              <p className="mt-3 whitespace-pre-line text-sm text-muted-foreground">
+              <p className="mt-3 whitespace-pre-line text-base text-muted-foreground">
                 {data.description}
               </p>
             ) : null}

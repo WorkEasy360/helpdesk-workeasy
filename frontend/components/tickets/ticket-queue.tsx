@@ -24,18 +24,18 @@ export function TicketQueueList({
             href={`/tickets/${ticket.id}`}
             aria-current={ticket.id === activeId ? 'true' : undefined}
             className={cn(
-              'block px-3 py-2.5 transition-colors hover:bg-muted/60',
+              'block px-3 py-2.5 transition-colors hover:bg-surface-muted',
               ticket.id === activeId && 'bg-muted',
             )}
           >
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground">#{ticket.ticketNumber}</span>
               <PriorityBadge priority={ticket.priority} />
-              <span className="ml-auto text-[11px] text-muted-foreground">
+              <span className="ml-auto text-xs text-muted-foreground">
                 {formatDateTime(ticket.updatedAt)}
               </span>
             </div>
-            <p className="mt-0.5 truncate text-sm font-medium">{ticket.subject}</p>
+            <p className="mt-0.5 truncate text-base font-medium">{ticket.subject}</p>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <StatusBadge status={ticket.status} />
               <SlaBadge ticket={ticket} />

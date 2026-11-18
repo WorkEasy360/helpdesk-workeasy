@@ -66,7 +66,7 @@ export default function CsatSurveyPage({
             <CardTitle>Thank you</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">{submit.data.thankYouText}</p>
+            <p className="text-base text-muted-foreground">{submit.data.thankYouText}</p>
           </CardContent>
         </Card>
       </div>
@@ -85,7 +85,7 @@ export default function CsatSurveyPage({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">{data.introText}</p>
+          <p className="text-base text-muted-foreground">{data.introText}</p>
 
           <div role="radiogroup" aria-label="Rating" className="flex items-center gap-2">
             {RATINGS.map((value) => (
@@ -98,7 +98,7 @@ export default function CsatSurveyPage({
                 className={cn(
                   'flex h-12 w-12 items-center justify-center rounded-full border transition-colors',
                   rating !== null && value <= rating
-                    ? 'border-amber-400 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                    ? 'border-rating bg-warning-soft text-rating'
                     : 'border-border text-muted-foreground hover:bg-muted',
                 )}
                 aria-label={`${value} star${value === 1 ? '' : 's'}`}
@@ -108,7 +108,7 @@ export default function CsatSurveyPage({
             ))}
           </div>
 
-          <label htmlFor="csat-comment" className="block text-sm font-medium">
+          <label htmlFor="csat-comment" className="block text-base font-medium">
             Anything you would like us to know? (optional)
           </label>
           <Textarea
@@ -120,7 +120,7 @@ export default function CsatSurveyPage({
           />
 
           {submit.isError ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-base text-destructive">
               {submit.error instanceof ApiError ? submit.error.message : 'Unable to submit your rating.'}
             </p>
           ) : null}

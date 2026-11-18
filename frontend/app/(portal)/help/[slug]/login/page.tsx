@@ -70,7 +70,7 @@ export default function PortalLoginPage({ params }: { params: Promise<{ slug: st
               />
             </Field>
             {error ? (
-              <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
                 {error}
               </p>
             ) : null}
@@ -79,7 +79,7 @@ export default function PortalLoginPage({ params }: { params: Promise<{ slug: st
             </Button>
           </form>
 
-          <div className="mt-4 space-y-1 text-sm text-muted-foreground">
+          <div className="mt-4 space-y-1 text-base text-muted-foreground">
             <p>
               <Link className="hover:underline" href={`/help/${slug}/forgot-password`}>
                 Forgot your password?

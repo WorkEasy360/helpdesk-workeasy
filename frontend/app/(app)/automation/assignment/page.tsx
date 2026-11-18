@@ -108,10 +108,10 @@ function RuleDialog({ open, onOpenChange, rule }: { open: boolean; onOpenChange:
             </div>
           )}
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Applies when</h3>
+            <h3 className="text-base font-semibold">Applies when</h3>
             <ConditionEditor value={conditions} onChange={setConditions} />
           </section>
-          {error ? <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+          {error ? <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">{error}</p> : null}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -174,7 +174,7 @@ export default function AssignmentRulesPage() {
                 <li key={rule.id} className="flex items-center gap-3 px-4 py-3">
                   <span className="w-6 text-center text-xs tabular-nums text-muted-foreground">{index + 1}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{rule.name}{!rule.isActive ? <Badge className="ml-2">Disabled</Badge> : null}</p>
+                    <p className="text-base font-medium">{rule.name}{!rule.isActive ? <Badge className="ml-2">Disabled</Badge> : null}</p>
                     <p className="text-xs text-muted-foreground">
                       {STRATEGY_LABELS[rule.strategy]}
                       {rule.agent ? ` → ${rule.agent.firstName} ${rule.agent.lastName}` : ''}

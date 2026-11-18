@@ -39,6 +39,7 @@ function toForm(settings: AiSettingsDto): AiSettingsFormValues {
     intentEnabled: settings.intentEnabled,
     suggestedReplyEnabled: settings.suggestedReplyEnabled,
     autoAnalyse: settings.autoAnalyse,
+    assistantDailyLimit: settings.assistantDailyLimit,
     monthlyTokenBudget: settings.monthlyTokenBudget,
     promptGuidance: settings.promptGuidance ?? '',
   };
@@ -138,7 +139,7 @@ export default function AiSettingsPage() {
             className="space-y-4"
             noValidate
           >
-            <label className="flex items-center gap-2 text-sm font-medium">
+            <label className="flex items-center gap-2 text-base font-medium">
               <input
                 type="checkbox"
                 className="h-4 w-4 rounded border-input"
@@ -199,16 +200,16 @@ export default function AiSettingsPage() {
                 ) : null}
               </>
             ) : (
-              <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+              <p className="rounded-md bg-muted px-3 py-2 text-base text-muted-foreground">
                 The built-in provider runs entirely inside this deployment. No ticket content leaves the
                 server and no credentials are needed.
               </p>
             )}
 
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Features</legend>
+              <legend className="text-base font-medium">Features</legend>
               {FEATURES.map((feature) => (
-                <label key={feature.name} className="flex items-center gap-2 text-sm">
+                <label key={feature.name} className="flex items-center gap-2 text-base">
                   <input
                     type="checkbox"
                     className="h-4 w-4 rounded border-input"
@@ -220,7 +221,7 @@ export default function AiSettingsPage() {
               ))}
             </fieldset>
 
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-base">
               <input
                 type="checkbox"
                 className="h-4 w-4 rounded border-input"
@@ -229,6 +230,35 @@ export default function AiSettingsPage() {
               />
               Analyse new tickets and customer replies automatically
             </label>
+
+            <fieldset className="grid gap-2 border-t border-border pt-4">
+              <legend className="c-label">Workspace assistant</legend>
+              <p className="c-hint">
+                The chat button on every page. It answers from this organization&rsquo;s own data and
+                prepares changes for an agent to confirm &mdash; it never changes anything on its own.
+                It is always on; agents need the <code>ai.use</code> permission to see it.
+              </p>
+              <p className="c-hint">
+                The assistant runs on the model configured for this deployment
+                (<code>AI_PROVIDER</code> / <code>AI_MODEL</code> / <code>AI_API_KEY</code>), not on
+                the provider and key above &mdash; those are for the per-ticket insights. The only
+                assistant setting here is its daily allowance.
+              </p>
+              <Field
+                label="Questions per day"
+                htmlFor="assistantDailyLimit"
+                error={errors.assistantDailyLimit?.message}
+                hint="Shared by the whole organization and reset at midnight UTC. Set 0 for no limit."
+              >
+                <Input
+                  id="assistantDailyLimit"
+                  type="number"
+                  min={0}
+                  disabled={!editable}
+                  {...register('assistantDailyLimit')}
+                />
+              </Field>
+            </fieldset>
 
             <Field
               label="Monthly token budget"
@@ -255,7 +285,7 @@ export default function AiSettingsPage() {
             </Field>
 
             {errors.root ? (
-              <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
                 {errors.root.message}
               </p>
             ) : null}
@@ -275,7 +305,7 @@ export default function AiSettingsPage() {
                 </Button>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-base text-muted-foreground">
                 You do not have permission to change these settings.
               </p>
             )}
@@ -289,13 +319,13 @@ export default function AiSettingsPage() {
             <CardTitle>Connection</CardTitle>
             <CardDescription>The result of the last request sent to the provider.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+          <CardContent className="space-y-2 text-base">
             <p>
               <span className="text-muted-foreground">Last checked: </span>
               {current.lastCheckedAt ? new Date(current.lastCheckedAt).toLocaleString() : 'never'}
             </p>
             {current.lastError ? (
-              <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-destructive">
+              <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-destructive">
                 {current.lastError}
               </p>
             ) : (
@@ -317,7 +347,7 @@ export default function AiSettingsPage() {
             ) : usage.isError ? (
               <ErrorState message="Unable to load usage." onRetry={() => usage.refetch()} />
             ) : (
-              <div className="space-y-3 text-sm">
+              <div className="space-y-3 text-base">
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <div>
                     <p className="text-muted-foreground">Requests</p>

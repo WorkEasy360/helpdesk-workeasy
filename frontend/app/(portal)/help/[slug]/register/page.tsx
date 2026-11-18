@@ -116,7 +116,7 @@ export default function PortalRegisterPage({ params }: { params: Promise<{ slug:
               />
             </Field>
             {error ? (
-              <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
                 {error}
               </p>
             ) : null}
@@ -124,7 +124,7 @@ export default function PortalRegisterPage({ params }: { params: Promise<{ slug:
               Create account
             </Button>
           </form>
-          <p className="mt-4 text-sm text-muted-foreground">
+          <p className="mt-4 text-base text-muted-foreground">
             Already registered?{' '}
             <Link className="font-medium text-foreground hover:underline" href={`/help/${slug}/login`}>
               Sign in

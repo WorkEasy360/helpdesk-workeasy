@@ -5,14 +5,40 @@ import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { LogOut } from 'lucide-react';
 import { portalService } from '@/services/portal.service';
-import { cn } from '@/lib/utils';
+import { onColorToken } from '@/lib/design/tokens';
+import { FULL_PRODUCT_NAME } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 import { ErrorState, LoadingState } from '@/components/ui/states';
 import { ApiError } from '@/lib/api-client';
 import { usePortalSession } from './portal-session';
 import { ChatWidget } from './chat-widget';
 
-/** Header, navigation and footer for a help center, branded from its own settings. */
+/**
+ * Header, navigation and footer for a help center.
+ *
+ * **The help center wears the organization's brand, not the product's.** Only the four
+ * brand tokens are remapped to the organization's stored colour — accent, primary, link
+ * and focus. Every neutral token and every `c-*` primitive stays exactly as the design
+ * system defines it, so a merchant's colour choice can never cost them a readable page.
+ * `--we-on-accent` is recomputed from the chosen colour's luminance, so text on their
+ * accent clears 4.5:1 whatever they pick. See docs/DESIGN-SYSTEM.md.
+ */
+function brandTokens(primaryColor: string): React.CSSProperties {
+  // One computation for both: whatever sits on the customer's colour, accent or navy,
+  // needs the same readable foreground.
+  const onColor = onColorToken(primaryColor);
+  return {
+    '--we-accent': primaryColor,
+    '--we-accent-hover': primaryColor,
+    '--we-on-accent': onColor,
+    '--we-primary': primaryColor,
+    '--we-primary-hover': primaryColor,
+    '--we-on-primary': onColor,
+    '--we-link': primaryColor,
+    '--we-focus': primaryColor,
+  } as React.CSSProperties;
+}
+
 export function PortalShell({ slug, children }: { slug: string; children: React.ReactNode }) {
   const pathname = usePathname();
   const session = usePortalSession();
@@ -50,35 +76,26 @@ export function PortalShell({ slug, children }: { slug: string; children: React.
   ].filter((link) => link.show);
 
   return (
-    <div className="flex min-h-screen flex-col bg-muted/30" style={{ ['--portal-accent' as string]: site.primaryColor }}>
-      <header className="border-b border-border bg-background">
+    <div className="flex min-h-screen flex-col bg-background" style={brandTokens(site.primaryColor)}>
+      <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3 px-4 py-3">
           <Link href={base} className="flex items-center gap-2">
             {site.logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={site.logoUrl} alt="" className="h-7 w-auto" />
             ) : (
-              <span
-                className="inline-block h-6 w-6 rounded"
-                style={{ backgroundColor: site.primaryColor }}
-                aria-hidden
-              />
+              <span className="inline-block h-6 w-6 rounded-sm bg-accent" aria-hidden />
             )}
-            <span className="text-sm font-semibold tracking-tight">{site.name}</span>
+            <span className="text-md font-semibold tracking-tight text-foreground">{site.name}</span>
           </Link>
 
-          <nav aria-label="Help center" className="flex flex-wrap items-center gap-1">
+          <nav aria-label="Help center" className="c-tabs border-b-0">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 aria-current={pathname === link.href ? 'page' : undefined}
-                className={cn(
-                  'rounded-md px-2.5 py-1.5 text-sm transition-colors',
-                  pathname === link.href
-                    ? 'bg-muted font-medium text-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
+                className="c-tab"
               >
                 {link.label}
               </Link>
@@ -87,13 +104,13 @@ export function PortalShell({ slug, children }: { slug: string; children: React.
 
           <div className="ml-auto flex items-center gap-2">
             {site.allowTicketSubmission ? (
-              <Button asChild size="sm" style={{ backgroundColor: site.primaryColor }}>
+              <Button asChild size="sm">
                 <Link href={`${base}/submit`}>Submit a request</Link>
               </Button>
             ) : null}
             {session.status === 'signed-in' ? (
               <>
-                <span className="hidden text-sm text-muted-foreground sm:inline">
+                <span className="hidden text-base text-secondary sm:inline">
                   {session.profile?.firstName}
                 </span>
                 <Button variant="ghost" size="sm" onClick={() => void session.signOut()}>
@@ -110,15 +127,17 @@ export function PortalShell({ slug, children }: { slug: string; children: React.
         </div>
       </header>
 
-      <main id="main" className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-6">
+      <main id="main" className="mx-auto grid w-full max-w-5xl flex-1 content-start gap-6 px-4 py-6">
         {children}
       </main>
 
       <ChatWidget slug={slug} />
 
-      <footer className="border-t border-border bg-background">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-xs text-muted-foreground">
-          <span>{site.footerText ?? `${site.name} · powered by Digisoft360 Help Desk`}</span>
+      <footer className="border-t border-border bg-surface">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-xs text-secondary">
+          {/* The only product mark on a customer-facing page, and the organization can
+              replace it with their own footerText. */}
+          <span>{site.footerText ?? `${site.name} · powered by ${FULL_PRODUCT_NAME}`}</span>
           {site.supportEmail ? <a href={`mailto:${site.supportEmail}`}>{site.supportEmail}</a> : null}
         </div>
       </footer>

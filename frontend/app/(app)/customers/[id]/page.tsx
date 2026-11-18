@@ -23,8 +23,8 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-3 gap-2 border-b border-border py-2 last:border-0">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="col-span-2 text-sm">{children}</dd>
+      <dt className="text-base text-muted-foreground">{label}</dt>
+      <dd className="col-span-2 text-base">{children}</dd>
     </div>
   );
 }
@@ -135,7 +135,7 @@ export default function ContactDetailPage() {
             ) : (
               <ul className="divide-y divide-border">
                 {tickets.data.items.map((ticket) => (
-                  <li key={ticket.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                  <li key={ticket.id} className="flex items-center justify-between gap-2 py-2 text-base">
                     <Link href={`/tickets/${ticket.id}`} className="truncate font-medium hover:underline">
                       #{ticket.ticketNumber} {ticket.subject}
                     </Link>
@@ -164,7 +164,7 @@ export default function ContactDetailPage() {
             ) : (
               <ul className="divide-y divide-border">
                 {activities.data.items.map((activity) => (
-                  <li key={activity.id} className="py-2 text-sm">
+                  <li key={activity.id} className="py-2 text-base">
                     <p className="font-medium">{activity.subject}</p>
                     <p className="text-xs text-muted-foreground">
                       {activity.type.charAt(0) + activity.type.slice(1).toLowerCase()} · {formatDateTime(activity.createdAt)}

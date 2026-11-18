@@ -122,7 +122,7 @@ export default function OrganizationSettingsPage() {
             </div>
 
             {errors.root ? (
-              <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
                 {errors.root.message}
               </p>
             ) : null}
@@ -132,7 +132,7 @@ export default function OrganizationSettingsPage() {
                 Save changes
               </Button>
             ) : (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-base text-muted-foreground">
                 You do not have permission to change these settings.
               </p>
             )}
@@ -155,10 +155,10 @@ export default function OrganizationSettingsPage() {
           ) : (
             businessHours.data.map((hours) => (
               <div key={hours.id} className="space-y-2">
-                <p className="text-sm font-medium">
+                <p className="text-base font-medium">
                   {hours.name} <span className="text-muted-foreground">({hours.timezone})</span>
                 </p>
-                <ul className="space-y-1 text-sm text-muted-foreground">
+                <ul className="space-y-1 text-base text-muted-foreground">
                   {hours.weeklySchedule.map((slot) => (
                     <li key={`${hours.id}-${slot.day}`} className="flex justify-between border-b border-border py-1">
                       <span>{DAY_NAMES[slot.day]}</span>

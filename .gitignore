@@ -8,6 +8,10 @@ coverage/
 .env
 .env.local
 .env.*.local
+# Any hand-made copy of a .env: `.env.bak`, `.env.backup-2026-11-11`, `.env.save`.
+# These hold the same JWT and database secrets as `.env` itself but are not matched
+# by the plain `.env` rule above, so without this they stage silently with `git add -A`.
+.env.*
 !.env.example
 .DS_Store
 *.log

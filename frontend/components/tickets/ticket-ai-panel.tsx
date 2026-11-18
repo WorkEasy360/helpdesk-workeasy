@@ -114,7 +114,7 @@ export function TicketAiPanel({ ticket }: { ticket: TicketDetail }) {
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-base">Summary</CardTitle>
+          <CardTitle className="text-md">Summary</CardTitle>
           <Button
             variant="ghost"
             size="sm"
@@ -128,20 +128,20 @@ export function TicketAiPanel({ ticket }: { ticket: TicketDetail }) {
         <CardContent className="space-y-2">
           {summary?.status === 'READY' ? (
             <>
-              <p className="text-sm">{summary.content.text}</p>
+              <p className="text-base">{summary.content.text}</p>
               <ul className="space-y-1 text-xs text-muted-foreground">
                 {(summary.content.highlights ?? []).map((line) => (
                   <li key={line}>• {line}</li>
                 ))}
               </ul>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {formatDateTime(summary.createdAt)} · {summary.model}
               </p>
             </>
           ) : summary?.status === 'FAILED' ? (
-            <p className="text-sm text-destructive">{summary.error}</p>
+            <p className="text-base text-destructive">{summary.error}</p>
           ) : (
-            <p className="text-sm text-muted-foreground">Nothing generated yet.</p>
+            <p className="text-base text-muted-foreground">Nothing generated yet.</p>
           )}
         </CardContent>
       </Card>
@@ -149,7 +149,7 @@ export function TicketAiPanel({ ticket }: { ticket: TicketDetail }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-base">Sentiment</CardTitle>
+            <CardTitle className="text-md">Sentiment</CardTitle>
             <Button
               variant="ghost"
               size="sm"
@@ -168,16 +168,16 @@ export function TicketAiPanel({ ticket }: { ticket: TicketDetail }) {
                 <p className="text-xs text-muted-foreground">{sentiment.content.rationale}</p>
               </>
             ) : sentiment?.status === 'FAILED' ? (
-              <p className="text-sm text-destructive">{sentiment.error}</p>
+              <p className="text-base text-destructive">{sentiment.error}</p>
             ) : (
-              <p className="text-sm text-muted-foreground">Not analysed yet.</p>
+              <p className="text-base text-muted-foreground">Not analysed yet.</p>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-base">Intent</CardTitle>
+            <CardTitle className="text-md">Intent</CardTitle>
             <Button
               variant="ghost"
               size="sm"
@@ -190,7 +190,7 @@ export function TicketAiPanel({ ticket }: { ticket: TicketDetail }) {
           <CardContent className="space-y-2">
             {intent?.status === 'READY' ? (
               <>
-                <p className="text-sm font-medium">{intent.content.intent}</p>
+                <p className="text-base font-medium">{intent.content.intent}</p>
                 <p className="text-xs text-muted-foreground">
                   Urgency {intent.content.urgency?.toLowerCase()} · confidence{' '}
                   {Math.round((intent.content.confidence ?? 0) * 100)}%
@@ -219,9 +219,9 @@ export function TicketAiPanel({ ticket }: { ticket: TicketDetail }) {
                 </div>
               </>
             ) : intent?.status === 'FAILED' ? (
-              <p className="text-sm text-destructive">{intent.error}</p>
+              <p className="text-base text-destructive">{intent.error}</p>
             ) : (
-              <p className="text-sm text-muted-foreground">Not classified yet.</p>
+              <p className="text-base text-muted-foreground">Not classified yet.</p>
             )}
           </CardContent>
         </Card>
@@ -230,7 +230,7 @@ export function TicketAiPanel({ ticket }: { ticket: TicketDetail }) {
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
           <div>
-            <CardTitle className="text-base">Suggested reply</CardTitle>
+            <CardTitle className="text-md">Suggested reply</CardTitle>
             <CardDescription>
               A draft for you to edit. Nothing is sent until you send it.
             </CardDescription>
@@ -249,12 +249,12 @@ export function TicketAiPanel({ ticket }: { ticket: TicketDetail }) {
           {reply?.status === 'READY' && reply.content.text ? (
             <>
               {!reply.content.grounded ? (
-                <p className="rounded-md bg-amber-100 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                <p className="rounded-md bg-warning-soft px-3 py-2 text-xs text-warning-text">
                   No knowledge base article matched this ticket, so the draft asks for detail
                   rather than answering.
                 </p>
               ) : null}
-              <p className="whitespace-pre-wrap rounded-md border border-border p-3 text-sm">
+              <p className="whitespace-pre-wrap rounded-md border border-border p-3 text-base">
                 {reply.content.text}
               </p>
               <Button size="sm" onClick={() => setDraft(ticket.id, reply.content.text ?? '')}>
@@ -262,16 +262,16 @@ export function TicketAiPanel({ ticket }: { ticket: TicketDetail }) {
               </Button>
             </>
           ) : reply?.status === 'FAILED' ? (
-            <p className="text-sm text-destructive">{reply.error}</p>
+            <p className="text-base text-destructive">{reply.error}</p>
           ) : (
-            <p className="text-sm text-muted-foreground">No draft yet.</p>
+            <p className="text-base text-muted-foreground">No draft yet.</p>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex items-center gap-2 text-md">
             <BookOpen className="h-4 w-4" aria-hidden />
             Knowledge base matches
           </CardTitle>
@@ -281,7 +281,7 @@ export function TicketAiPanel({ ticket }: { ticket: TicketDetail }) {
             <ul className="space-y-2">
               {articles.data.map((article) => (
                 <li key={article.id}>
-                  <Link className="text-sm hover:underline" href={`/knowledge-base/${article.id}`}>
+                  <Link className="text-base hover:underline" href={`/knowledge-base/${article.id}`}>
                     {article.title}
                   </Link>
                   {article.summary ? (
@@ -291,7 +291,7 @@ export function TicketAiPanel({ ticket }: { ticket: TicketDetail }) {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-base text-muted-foreground">
               Nothing in the knowledge base matches this ticket yet.
             </p>
           )}

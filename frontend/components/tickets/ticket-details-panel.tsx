@@ -29,7 +29,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   return (
     <div className="grid grid-cols-[6.5rem_1fr] items-center gap-2 py-1.5">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="text-sm">{children}</dd>
+      <dd className="text-base">{children}</dd>
     </div>
   );
 }
@@ -192,7 +192,7 @@ export function TicketDetailsPanel({ ticket }: { ticket: TicketDetail }) {
                     ))}
             </Select>
             {transitions.data?.governed ? (
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Workflow: {transitions.data.blueprint?.name}. * needs fields first.
               </p>
             ) : null}
@@ -252,27 +252,27 @@ export function TicketDetailsPanel({ ticket }: { ticket: TicketDetail }) {
       <section aria-label="SLA" className="space-y-1">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">SLA</h3>
         {ticket.slaPolicy ? (
-          <dl className="space-y-1 text-sm">
+          <dl className="space-y-1 text-base">
             <div className="flex items-center justify-between gap-2">
               <dt className="text-muted-foreground">Policy</dt>
               <dd className="flex items-center gap-2">{ticket.slaPolicy.name}<SlaBadge ticket={ticket} /></dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt className="text-muted-foreground">First response</dt>
-              <dd className={ticket.firstResponseBreachedAt && !ticket.firstResponseAt ? 'text-red-700 dark:text-red-400' : ''}>
+              <dd className={ticket.firstResponseBreachedAt && !ticket.firstResponseAt ? 'text-error-text' : ''}>
                 {ticket.firstResponseAt ? `met ${formatDateTime(ticket.firstResponseAt)}` : `due ${formatDateTime(ticket.firstResponseDueAt)}`}
               </dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt className="text-muted-foreground">Resolution</dt>
-              <dd className={ticket.resolutionBreachedAt && !ticket.resolvedAt ? 'text-red-700 dark:text-red-400' : ''}>
+              <dd className={ticket.resolutionBreachedAt && !ticket.resolvedAt ? 'text-error-text' : ''}>
                 {ticket.resolvedAt ? `met ${formatDateTime(ticket.resolvedAt)}` : `due ${formatDateTime(ticket.resolutionDueAt)}`}
               </dd>
             </div>
             {ticket.slaPausedAt ? <p className="text-xs text-muted-foreground">Clock paused since {formatDateTime(ticket.slaPausedAt)} — this status waits on someone else.</p> : null}
           </dl>
         ) : (
-          <p className="text-sm text-muted-foreground">No policy applies to this ticket.</p>
+          <p className="text-base text-muted-foreground">No policy applies to this ticket.</p>
         )}
       </section>
 
@@ -280,7 +280,7 @@ export function TicketDetailsPanel({ ticket }: { ticket: TicketDetail }) {
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tags</h3>
         <div className="flex flex-wrap gap-1">
           {ticket.tags.length === 0 ? (
-            <span className="text-sm text-muted-foreground">None</span>
+            <span className="text-base text-muted-foreground">None</span>
           ) : (
             ticket.tags.map((entry) => <TagChip key={entry.tag.id} tag={entry.tag} />)
           )}
@@ -301,7 +301,7 @@ export function TicketDetailsPanel({ ticket }: { ticket: TicketDetail }) {
                         : [...selectedTagIds, tag.id],
                     )
                   }
-                  className={`rounded border px-1.5 py-0.5 text-[11px] ${
+                  className={`rounded border px-1.5 py-0.5 text-xs ${
                     selected ? 'border-foreground' : 'border-border text-muted-foreground'
                   }`}
                 >
@@ -319,7 +319,7 @@ export function TicketDetailsPanel({ ticket }: { ticket: TicketDetail }) {
           Requester
         </h3>
         {ticket.contact ? (
-          <div className="space-y-0.5 text-sm">
+          <div className="space-y-0.5 text-base">
             <Link href={`/customers/${ticket.contact.id}`} className="font-medium hover:underline">
               {ticket.contact.firstName} {ticket.contact.lastName ?? ''}
             </Link>
@@ -339,7 +339,7 @@ export function TicketDetailsPanel({ ticket }: { ticket: TicketDetail }) {
             ) : null}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">No contact linked</p>
+          <p className="text-base text-muted-foreground">No contact linked</p>
         )}
       </section>
 
@@ -348,7 +348,7 @@ export function TicketDetailsPanel({ ticket }: { ticket: TicketDetail }) {
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Resolution
           </h3>
-          <p className="whitespace-pre-line text-sm">{ticket.resolutionNote}</p>
+          <p className="whitespace-pre-line text-base">{ticket.resolutionNote}</p>
         </section>
       ) : null}
 
@@ -357,7 +357,7 @@ export function TicketDetailsPanel({ ticket }: { ticket: TicketDetail }) {
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Linked tickets
           </h3>
-          <ul className="space-y-1 text-sm">
+          <ul className="space-y-1 text-base">
             {ticket.links.map((link) => (
               <li key={link.id}>
                 <Link href={`/tickets/${link.linkedTicket.id}`} className="hover:underline">
@@ -378,7 +378,7 @@ export function TicketDetailsPanel({ ticket }: { ticket: TicketDetail }) {
             <DialogTitle>Resolve ticket</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            <label htmlFor="resolution-note" className="text-sm font-medium">
+            <label htmlFor="resolution-note" className="text-base font-medium">
               Resolution note
             </label>
             <Textarea

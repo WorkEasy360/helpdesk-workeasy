@@ -19,6 +19,7 @@ export * from './channels';
 export * from './chat';
 export * from './integrations';
 export * from './ai';
+export * from './assistant';
 export * from './analytics';
 export * from './api';
 export * from './network';

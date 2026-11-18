@@ -843,6 +843,7 @@ export interface AiSettingsDto {
   intentEnabled: boolean;
   suggestedReplyEnabled: boolean;
   autoAnalyse: boolean;
+  assistantDailyLimit: number;
   monthlyTokenBudget: number;
   promptGuidance: string | null;
   lastCheckedAt: string | null;

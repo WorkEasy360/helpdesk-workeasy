@@ -124,10 +124,10 @@ export default function AgentTopicPage() {
           </Card>
 
           {data.replies.map((item) => (
-            <Card key={item.id} className={item.isAnswer ? 'border-emerald-500' : undefined}>
+            <Card key={item.id} className={item.isAnswer ? 'border-success' : undefined}>
               <CardHeader className="flex-row items-start justify-between space-y-0">
                 <div>
-                  <CardTitle className="text-sm">
+                  <CardTitle className="text-base">
                     {item.author ? `${item.author.firstName} ${item.author.lastName}` : 'Deleted user'}
                     {item.author?.type === 'AGENT' ? (
                       <Badge className="ml-2" variant="outline">

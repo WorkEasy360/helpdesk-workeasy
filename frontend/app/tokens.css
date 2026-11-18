@@ -1,0 +1,221 @@
+/**
+ * WorkEasy360 design tokens — the single source of truth for every colour, size,
+ * radius, shadow and motion value in the product. See docs/DESIGN-SYSTEM.md.
+ *
+ * Nothing in a page or a component may hardcode one of these values. If a value is
+ * missing, add it here and expose it in tailwind.config.ts.
+ *
+ * Dark values are their own steps, not an automatic inversion of the light ones.
+ */
+
+:root {
+  /* ---- Brand ------------------------------------------------------------ */
+  /* The logo green. For the BrandMark and the favicons only — never for UI. */
+  --we-brand-logo: #00bf62;
+
+  /* ---- Structure: navy -------------------------------------------------- */
+  --we-primary: #1b3040;
+  --we-primary-hover: #112532;
+  /* Text and icons on a navy fill. */
+  --we-on-primary: #f8fafc;
+  /* Navigation rows on the navy sidebar: resting, hover, active. */
+  --we-primary-nav: #f1f5f9;
+  --we-primary-nav-muted: #9fb3c4;
+  --we-primary-hover-soft: #24455c;
+  --we-primary-active: #2b5370;
+
+  /* ---- Accent: green ---------------------------------------------------- */
+  --we-accent: #4ade80;
+  --we-accent-hover: #22c55e;
+  /* Text on green. White on green fails contrast; navy clears 7.8:1. */
+  --we-on-accent: #1b3040;
+  --we-accent-soft: #dcfce7;
+  --we-accent-strong: #166534;
+  /* The halo around the assistant launcher. Derived from the accent rather than fixed,
+     so it stays correct on the help centre, where the accent is the customer's own
+     colour, and in dark mode, where it composites over the dark canvas instead of white. */
+  --we-accent-ring: color-mix(in srgb, var(--we-accent) 50%, transparent);
+
+  /* ---- Surfaces --------------------------------------------------------- */
+  --we-background: #f8fafc;
+  --we-surface: #ffffff;
+  --we-surface-muted: #f1f5f9;
+
+  /* ---- Lines ------------------------------------------------------------ */
+  --we-border: #e2e8f0;
+  --we-border-strong: #cbd5e1;
+  /* Text field outlines: at least 3:1 against every surface they sit on (WCAG 1.4.11). */
+  --we-border-input: #7d8ba0;
+
+  /* ---- Text ------------------------------------------------------------- */
+  --we-text-primary: #1b3040;
+  --we-text-body: #334155;
+  --we-text-secondary: #64748b;
+  /* Secondary text is 4.3:1 on --we-surface-muted, so it must not be used there. */
+
+  --we-link: #166534;
+  --we-focus: #1b3040;
+  /* Focus rings on navy surfaces (sidebar, bulk bar) switch to green. */
+  --we-focus-on-primary: #4ade80;
+
+  /* ---- Status: base / soft / text --------------------------------------- */
+  --we-success: #16a34a;
+  --we-success-soft: #dcfce7;
+  --we-success-text: #166534;
+
+  --we-info: #2563eb;
+  --we-info-soft: #dbeafe;
+  --we-info-text: #1e40af;
+
+  --we-warning: #d97706;
+  --we-warning-soft: #fef3c7;
+  --we-warning-text: #92400e;
+
+  --we-error: #dc2626;
+  --we-error-soft: #fee2e2;
+  --we-error-text: #991b1b;
+
+  --we-ai: #7c3aed;
+  --we-ai-soft: #ede9fe;
+  --we-ai-text: #5b21b6;
+
+  /* Star ratings and CSAT scores only. Never a chart series. */
+  --we-rating: #b45309;
+
+  /* Text on a colour the customer chose — the help center's own brand. Picked by
+     luminance against that colour, so these two are deliberately the same in dark
+     mode: which one applies depends on the colour, not on the theme. */
+  --we-on-color-dark: #1b3040;
+  --we-on-color-light: #f8fafc;
+
+  /* ---- Charts ----------------------------------------------------------- */
+  /* Fixed order. Brand navy is too grey to separate as a series, so series 1 is a
+     more saturated navy-blue. A fourth series folds into "Other". */
+  --we-chart-1: #235e9c;
+  --we-chart-2: #16a34a;
+  --we-chart-3: #8b5cf6;
+  --we-chart-other: #64748b;
+
+  /* ---- Type ------------------------------------------------------------- */
+  --we-font-size-xs: 0.75rem; /* 12 — metadata */
+  --we-font-size-sm: 0.8125rem; /* 13 — secondary */
+  --we-font-size-base: 0.875rem; /* 14 — body */
+  --we-font-size-md: 1rem; /* 16 — component heading */
+  --we-font-size-lg: 1.125rem; /* 18 — section heading */
+  --we-font-size-xl: 1.5rem; /* 24 — page heading */
+
+  --we-font-weight-regular: 400;
+  --we-font-weight-medium: 500;
+  --we-font-weight-semibold: 600;
+
+  --we-line-height-tight: 1.25;
+  --we-line-height-base: 1.5;
+
+  /* ---- Spacing: a 4px grid ---------------------------------------------- */
+  --we-space-1: 4px;
+  --we-space-2: 8px;
+  --we-space-3: 12px;
+  --we-space-4: 16px;
+  --we-space-5: 20px;
+  --we-space-6: 24px;
+  --we-space-8: 32px;
+  --we-space-12: 48px;
+
+  /* ---- Radii ------------------------------------------------------------ */
+  --we-radius-sm: 6px; /* tags and small chips */
+  --we-radius-md: 8px; /* inputs, buttons, menu items */
+  --we-radius-lg: 12px; /* cards, tables, popovers */
+  --we-radius-xl: 16px; /* dialogs */
+  --we-radius-full: 999px;
+
+  /* ---- Shadows ---------------------------------------------------------- */
+  --we-shadow-sm: 0 1px 2px 0 rgb(27 48 64 / 0.05);
+  --we-shadow-md: 0 2px 6px -1px rgb(27 48 64 / 0.1), 0 1px 2px -1px rgb(27 48 64 / 0.06);
+  --we-shadow-lg: 0 12px 28px -8px rgb(27 48 64 / 0.18), 0 4px 10px -4px rgb(27 48 64 / 0.1);
+
+  /* ---- Sizes ------------------------------------------------------------ */
+  --we-size-sidebar: 248px;
+  --we-size-topbar: 56px;
+  --we-size-control: 36px;
+  --we-size-control-sm: 30px;
+  --we-size-nav-item: 36px;
+  --we-size-icon: 18px;
+  /* The assistant launcher: bigger than a control, because it is a target, not a button
+     in a row of buttons. */
+  --we-size-fab: 56px;
+  --we-size-page: 1200px;
+  --we-size-page-narrow: 880px;
+
+  /* ---- Motion ----------------------------------------------------------- */
+  --we-motion-ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --we-motion-fast: 150ms; /* hover and focus */
+  --we-motion-drawer: 200ms;
+
+  color-scheme: light;
+}
+
+.dark {
+  --we-primary: #27455a;
+  --we-primary-hover: #315770;
+  --we-on-primary: #f1f5f9;
+  --we-primary-nav: #f1f5f9;
+  --we-primary-nav-muted: #94a3b8;
+  --we-primary-hover-soft: #315770;
+  --we-primary-active: #3b6682;
+
+  --we-accent: #4ade80;
+  --we-accent-hover: #22c55e;
+  --we-on-accent: #112532;
+  --we-accent-soft: #13341f;
+  --we-accent-strong: #6ee7a7;
+
+  --we-background: #0b1620;
+  --we-surface: #112532;
+  --we-surface-muted: #16303f;
+
+  --we-border: #27455a;
+  --we-border-strong: #36576e;
+  --we-border-input: #5a7a91;
+
+  --we-text-primary: #f1f5f9;
+  --we-text-body: #cbd5e1;
+  --we-text-secondary: #94a3b8;
+
+  --we-link: #4ade80;
+  --we-focus: #4ade80;
+  --we-focus-on-primary: #4ade80;
+
+  /* Each base clears 3:1 on --we-surface; each text clears 8:1 on its own soft. */
+  --we-success: #22c55e;
+  --we-success-soft: #13341f;
+  --we-success-text: #6ee7a7;
+
+  --we-info: #3b82f6;
+  --we-info-soft: #152a4a;
+  --we-info-text: #93c5fd;
+
+  --we-warning: #f59e0b;
+  --we-warning-soft: #3a2a0c;
+  --we-warning-text: #fcd34d;
+
+  --we-error: #f87171;
+  --we-error-soft: #431519;
+  --we-error-text: #fca5a5;
+
+  --we-ai: #a78bfa;
+  --we-ai-soft: #2a1d4e;
+  --we-ai-text: #c4b5fd;
+
+  --we-rating: #fbbf24;
+
+  --we-chart-1: #5a93d8;
+  --we-chart-2: #1faf55;
+  --we-chart-3: #9f7aea;
+  --we-chart-other: #94a3b8;
+
+  --we-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --we-shadow-md: 0 2px 6px -1px rgb(0 0 0 / 0.45), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+  --we-shadow-lg: 0 12px 28px -8px rgb(0 0 0 / 0.6), 0 4px 10px -4px rgb(0 0 0 / 0.4);
+
+  color-scheme: dark;
+}

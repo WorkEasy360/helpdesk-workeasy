@@ -1,19 +1,6 @@
-export function PageHeader({
-  title,
-  description,
-  actions,
-}: {
-  title: string;
-  description?: string;
-  actions?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
-      <div>
-        <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
-        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
-      </div>
-      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
-    </div>
-  );
-}
+/**
+ * Re-exported from the page contract so the pages that already import from here keep
+ * working. New code should import `PageHeader` (and `Page`, `StatCard`, `EmptyState`)
+ * from `@/components/ui/page`. See docs/DESIGN-SYSTEM.md.
+ */
+export { PageHeader } from '@/components/ui/page';

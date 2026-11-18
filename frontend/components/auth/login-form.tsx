@@ -117,7 +117,7 @@ export function LoginForm() {
                   type="button"
                   disabled={choosing}
                   onClick={() => chooseOrganization(org.slug)}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left text-sm transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left text-base transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
                 >
                   <span>
                     <span className="block font-medium">{org.name}</span>
@@ -132,7 +132,7 @@ export function LoginForm() {
           {chooseError ? (
             <p
               role="alert"
-              className="mt-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-red-700 dark:text-red-300"
+              className="mt-4 rounded-md bg-error-soft px-3 py-2 text-base text-error-text"
             >
               {chooseError}
             </p>
@@ -180,7 +180,7 @@ export function LoginForm() {
         {errors.root ? (
           <p
             role="alert"
-            className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-red-700 dark:text-red-300"
+            className="rounded-md bg-error-soft px-3 py-2 text-base text-error-text"
           >
             {errors.root.message}
           </p>
@@ -191,7 +191,7 @@ export function LoginForm() {
         </Button>
       </form>
 
-      <div className="mt-4 flex items-center justify-between text-sm">
+      <div className="mt-4 flex items-center justify-between text-base">
         <Link href="/forgot-password" className="text-muted-foreground hover:text-foreground">
           Forgot password?
         </Link>
@@ -217,7 +217,7 @@ export function LoginForm() {
       </CardHeader>
       <CardContent>
         {signInRequired ? (
-          <p role="status" className="mb-4 rounded-md bg-muted px-3 py-2 text-sm">
+          <p role="status" className="mb-4 rounded-md bg-muted px-3 py-2 text-base">
             Your Easy Help Desk account now signs in with Workeasy360. Continue with Workeasy360
             below: it links your account by your verified email address.
           </p>
@@ -225,7 +225,7 @@ export function LoginForm() {
         {ssoError ? (
           <p
             role="alert"
-            className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-red-700 dark:text-red-300"
+            className="mb-4 rounded-md bg-error-soft px-3 py-2 text-base text-error-text"
           >
             {ssoError}
           </p>
@@ -234,7 +234,7 @@ export function LoginForm() {
         {methodsLoading ? <LoadingState /> : null}
 
         {!methodsLoading && !methods.password && !methods.workeasy360 ? (
-          <p role="alert" className="rounded-md bg-muted px-3 py-2 text-sm">
+          <p role="alert" className="rounded-md bg-muted px-3 py-2 text-base">
             Sign-in is not available on this deployment. Contact your administrator.
           </p>
         ) : null}

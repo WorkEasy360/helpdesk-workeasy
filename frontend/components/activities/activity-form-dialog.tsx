@@ -142,7 +142,7 @@ export function ActivityFormDialog({ open, onOpenChange, ticketId, contactId, de
           <input type="hidden" {...register('ticketId')} />
           <input type="hidden" {...register('contactId')} />
 
-          {errors.root ? <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{errors.root.message}</p> : null}
+          {errors.root ? <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">{errors.root.message}</p> : null}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

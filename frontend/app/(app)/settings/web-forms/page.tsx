@@ -85,12 +85,12 @@ export default function WebFormsPage() {
                       {form.requireLogin ? ' · sign-in required' : ''}
                     </p>
                   </TD>
-                  <TD className="text-sm text-muted-foreground">
+                  <TD className="text-base text-muted-foreground">
                     {form.department?.name ?? 'Assignment rules'}
                     {form.priority ? ` · ${form.priority.name}` : ''}
                   </TD>
-                  <TD className="text-sm text-muted-foreground">{form.fields.length}</TD>
-                  <TD className="text-right text-sm">{form.submissionCount}</TD>
+                  <TD className="text-base text-muted-foreground">{form.fields.length}</TD>
+                  <TD className="text-right text-base">{form.submissionCount}</TD>
                   <TD className="text-right">
                     <div className="flex justify-end gap-1">
                       {helpCenter.data ? (

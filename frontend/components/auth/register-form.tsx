@@ -160,7 +160,7 @@ export function RegisterForm() {
           <input type="hidden" {...register('timezone')} />
 
           {errors.root ? (
-            <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
               {errors.root.message}
             </p>
           ) : null}
@@ -170,7 +170,7 @@ export function RegisterForm() {
           </Button>
         </form>
 
-        <p className="mt-4 text-sm text-muted-foreground">
+        <p className="mt-4 text-base text-muted-foreground">
           Already have an account?{' '}
           <Link href="/login" className="text-foreground hover:underline">
             Sign in

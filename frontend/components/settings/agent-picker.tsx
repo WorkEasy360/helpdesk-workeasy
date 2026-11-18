@@ -86,22 +86,22 @@ export function AgentPicker({ id, value, onChange, disabled }: Props) {
 
       <div className="max-h-40 space-y-1 overflow-y-auto" aria-live="polite">
         {results.isPending ? (
-          <p className="text-sm text-muted-foreground">Loading agents…</p>
+          <p className="text-base text-muted-foreground">Loading agents…</p>
         ) : results.isError ? (
-          <p className="text-sm text-destructive">
+          <p className="text-base text-destructive">
             Unable to load agents.{' '}
             <button type="button" className="underline" onClick={() => results.refetch()}>
               Try again
             </button>
           </p>
         ) : results.data.items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No agents match that search.</p>
+          <p className="text-base text-muted-foreground">No agents match that search.</p>
         ) : (
           <>
             {results.data.items.map((agent) => {
               const picked = { id: agent.id, name: `${agent.firstName} ${agent.lastName}` };
               return (
-                <label key={agent.id} className="flex items-center gap-2 text-sm">
+                <label key={agent.id} className="flex items-center gap-2 text-base">
                   <input
                     type="checkbox"
                     className="h-4 w-4 rounded border-input"

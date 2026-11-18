@@ -14,18 +14,18 @@ export const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
   <DialogPrimitive.Portal>
-    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50" />
+    <DialogPrimitive.Overlay className="c-scrim fixed inset-0 z-50" />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-1/2 top-1/2 z-50 grid max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain rounded-lg border border-border bg-background p-4 text-foreground shadow-lg sm:w-[calc(100vw-2rem)] sm:p-5',
+        'c-dialog fixed left-1/2 top-1/2 z-50 grid max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain p-4 sm:w-[calc(100vw-2rem)] sm:p-5',
         className,
       )}
       {...props}
     >
       {children}
       <DialogPrimitive.Close
-        className="absolute right-4 top-4 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-4 top-4 rounded-sm text-secondary transition-colors hover:text-foreground"
         aria-label="Close"
       >
         <X className="h-4 w-4" aria-hidden />
@@ -43,7 +43,7 @@ export const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
 >(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title ref={ref} className={cn('text-base font-semibold', className)} {...props} />
+  <DialogPrimitive.Title ref={ref} className={cn('text-md font-semibold text-foreground', className)} {...props} />
 ));
 DialogTitle.displayName = 'DialogTitle';
 
@@ -53,7 +53,7 @@ export const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn('text-sm text-muted-foreground', className)}
+    className={cn('text-base text-secondary', className)}
     {...props}
   />
 ));

@@ -82,7 +82,7 @@ export default function CsatSettingsPage() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit((values) => save.mutateAsync(values))} className="space-y-4" noValidate>
-          <label className="flex items-center gap-2 text-sm font-medium">
+          <label className="flex items-center gap-2 text-base font-medium">
             <input
               type="checkbox"
               className="h-4 w-4 rounded border-input"
@@ -124,7 +124,7 @@ export default function CsatSettingsPage() {
           </Field>
 
           {errors.root ? (
-            <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-destructive">
               {errors.root.message}
             </p>
           ) : null}
@@ -134,7 +134,7 @@ export default function CsatSettingsPage() {
               Save changes
             </Button>
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-base text-muted-foreground">
               You do not have permission to change these settings.
             </p>
           )}

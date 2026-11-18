@@ -84,7 +84,7 @@ export function AccessEnded() {
         ) : null}
 
         {error ? (
-          <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+          <p role="alert" className="rounded-md bg-error-soft px-3 py-2 text-base text-error-text">
             {error}
           </p>
         ) : null}

@@ -62,7 +62,7 @@ function ReportsContent() {
       <>
         <PageHeader title="Reports" description="Ticket, agent, SLA and satisfaction reporting." />
         <Card>
-          <CardContent className="pt-4 text-sm text-muted-foreground">
+          <CardContent className="pt-4 text-base text-muted-foreground">
             Your role does not include report access.
           </CardContent>
         </Card>

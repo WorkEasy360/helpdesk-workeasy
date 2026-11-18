@@ -12,19 +12,13 @@ function ids(idBase: string, value: string) {
   return { tab: `${idBase}-tab-${value}`, panel: `${idBase}-panel-${value}` };
 }
 
+/**
+ * `underline` is the design system's `c-tabs`: navy text plus a green indicator on the
+ * active tab. `pill` is the segmented control, `c-segmented`.
+ */
 const variants = {
-  underline: {
-    list: 'flex flex-wrap gap-1 border-b border-border',
-    tab: '-mb-px border-b-2 px-3 py-2 text-sm transition-colors',
-    active: 'border-foreground font-medium text-foreground',
-    inactive: 'border-transparent text-muted-foreground hover:text-foreground',
-  },
-  pill: {
-    list: 'flex flex-wrap gap-1',
-    tab: 'rounded-md px-3 py-1 text-sm transition-colors',
-    active: 'bg-muted font-medium text-foreground',
-    inactive: 'text-muted-foreground hover:bg-muted hover:text-foreground',
-  },
+  underline: { list: 'c-tabs', tab: 'c-tab', active: '', inactive: '' },
+  pill: { list: 'c-segmented', tab: '', active: '', inactive: '' },
 } as const;
 
 /**
@@ -85,11 +79,7 @@ export function Tabs<T extends string>({
             tabIndex={selected ? 0 : -1}
             onClick={() => onValueChange(item.value)}
             onKeyDown={(event) => onKeyDown(event, index)}
-            className={cn(
-              style.tab,
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-              selected ? style.active : style.inactive,
-            )}
+            className={cn(style.tab, selected ? style.active : style.inactive)}
           >
             {item.label}
           </button>

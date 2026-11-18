@@ -242,7 +242,7 @@ export function WebFormDialog({
 
           <div className="space-y-3 rounded-md border border-border p-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">Fields</h3>
+              <h3 className="text-base font-medium">Fields</h3>
               <Button
                 type="button"
                 variant="outline"
@@ -308,7 +308,7 @@ export function WebFormDialog({
                 ) : null}
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-2 text-sm">
+                  <label className="flex items-center gap-2 text-base">
                     <input
                       type="checkbox"
                       className="h-4 w-4"
@@ -369,7 +369,7 @@ export function WebFormDialog({
           </div>
 
           <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-base">
               <input
                 type="checkbox"
                 className="h-4 w-4"
@@ -378,7 +378,7 @@ export function WebFormDialog({
               />
               Only signed-in customers can use it
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-base">
               <input
                 type="checkbox"
                 className="h-4 w-4"
@@ -389,7 +389,7 @@ export function WebFormDialog({
             </label>
           </div>
 
-          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+          {error ? <p role="alert" className="text-base text-destructive">{error}</p> : null}
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
