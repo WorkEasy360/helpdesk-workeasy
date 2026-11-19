@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { SESSION_ENDED_CHANNEL, type SessionEndedMessage } from '../auth/session-liveness.service';
 import { RealtimeGateway } from './realtime.gateway';
 
 export const RT_BRIDGE_CHANNEL = 'rt:emit';
@@ -17,6 +18,8 @@ export interface RealtimeEnvelope {
 /**
  * Lets background workers push realtime events without owning a Socket.IO server:
  * they publish an envelope on Redis and the API instances fan it out to their sockets.
+ * It also carries "these sessions ended" (SESSION_ENDED_CHANNEL) from whichever instance ended
+ * them to every instance, which drops those sessions' sockets.
  */
 @Injectable()
 export class RealtimeBridge implements OnModuleInit, OnModuleDestroy {
@@ -30,8 +33,12 @@ export class RealtimeBridge implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     this.subscriber = this.redis.duplicate();
-    await this.subscriber.subscribe(RT_BRIDGE_CHANNEL);
-    this.subscriber.on('message', (_channel, raw) => {
+    await this.subscriber.subscribe(RT_BRIDGE_CHANNEL, SESSION_ENDED_CHANNEL);
+    this.subscriber.on('message', (channel, raw) => {
+      if (channel === SESSION_ENDED_CHANNEL) {
+        this.endSessions(raw);
+        return;
+      }
       try {
         const envelope = JSON.parse(raw) as RealtimeEnvelope;
         if (envelope.audience) {
@@ -61,6 +68,21 @@ export class RealtimeBridge implements OnModuleInit, OnModuleDestroy {
         );
       }
     });
+  }
+
+  /** Sessions ended somewhere (any instance): drop their sockets on this one. */
+  private endSessions(raw: string): void {
+    try {
+      const message = JSON.parse(raw) as Partial<SessionEndedMessage>;
+      const families = Array.isArray(message.families)
+        ? message.families.filter((family): family is string => typeof family === 'string' && family.length > 0)
+        : [];
+      this.gateway.endSessions(families);
+    } catch (error) {
+      this.logger.warn(
+        `Discarded malformed session-ended message: ${error instanceof Error ? error.message : error}`,
+      );
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

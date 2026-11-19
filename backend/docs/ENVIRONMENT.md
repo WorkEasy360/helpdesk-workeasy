@@ -46,8 +46,8 @@ Never commit a real `.env`. It is in `.gitignore`.
 | `JWT_EXPIRES_IN` | no | `15m` | Access token lifetime (`30s`, `15m`, `2h`, `7d`) |
 | `JWT_REFRESH_SECRET` | **yes** | — | ≥ 32 characters, different from `JWT_SECRET`. Also keys the HMAC for refresh, reset and invite tokens — rotating it invalidates all of them |
 | `JWT_REFRESH_EXPIRES_IN_DAYS` | no | `30` | Refresh token lifetime |
-| `COOKIE_SECURE` | no | `false` | **Set to `true` in production** |
-| `COOKIE_DOMAIN` | no | — | e.g. `.digisoft360.com` when the API and frontend share a parent domain |
+| `COOKIE_SECURE` | no | `false` | **Set to `true` in production.** Also switches the agent refresh cookie and the Workeasy360 flow cookie to `__Host-` names (`Path=/`, Secure, no Domain); existing agent sessions sign in again once after the change |
+| `COOKIE_DOMAIN` | no | — | e.g. `.digisoft360.com` when the API and frontend share a parent domain. Applies to the customer help center's cookie; the `__Host-` agent cookies (production) never carry a Domain |
 
 ## Proxy, request limits and registration (added in this hardening pass)
 
@@ -56,7 +56,27 @@ Never commit a real `.env`. It is in `.gitignore`.
 | `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | `1` | Express `trust proxy`: which hops may set `X-Forwarded-For`/`-Proto`, deciding `req.ip` (rate limits, audit) and `req.protocol` (Twilio signature URLs). A hop count, `true`/`false`, or a list of addresses/CIDRs. nginx is exactly one hop |
 | `BODY_LIMIT` | `1mb` | `1mb` | JSON / form body ceiling. Attachments (multipart) are capped by `ATTACHMENT_MAX_BYTES` instead |
 | `WEBHOOK_BODY_LIMIT` | `ATTACHMENT_MAX_BYTES` × 1.4 + 1 MB | unset | Inbound channel webhooks, which may carry base64 attachments. nginx's `client_max_body_size` (40m) must stay above it |
-| `ALLOW_PUBLIC_REGISTRATION` | `true` | `false` after the first organization | When `false`, `POST /auth/register` (creating a new organization) is refused |
+| `ALLOW_PUBLIC_REGISTRATION` | `true` | `false` after the first organization | When `false`, `POST /auth/register` (creating a new organization) is refused. Always refused while `WORKEASY360_SSO_ONLY` is on |
+
+## Sign in with Workeasy360
+
+Full guide: [docs/workeasy360-sso.md](../../docs/workeasy360-sso.md). The worker reads the
+same `ISSUER`, `CLIENT_ID`, `KEY_ID` and private key (no redirect URI).
+
+| Variable | Default | Notes |
+|---|---|---|
+| `WORKEASY360_ISSUER` | - | The Workeasy360 issuer URL, exactly as its discovery document names it. https in production |
+| `WORKEASY360_CLIENT_ID` | - | The integration's client id |
+| `WORKEASY360_REDIRECT_URI` | - | Exactly the registered redirect URI, `https://<host>/api/auth/callback/workeasy360` |
+| `WORKEASY360_KEY_ID` | - | The credential id returned for the registered public key |
+| `WORKEASY360_PRIVATE_KEY_FILE` / `WORKEASY360_PRIVATE_KEY` | - | The private key as a file, or inline PEM (literal backslash-n sequences allowed) |
+| `WORKEASY360_PRODUCT_CODE` | `easy_helpdesk` | A token for another product is refused (`wrong_product`) |
+| `WORKEASY360_SCOPES` | `openid email profile organization` | |
+| `WORKEASY360_POST_LOGOUT_REDIRECT_URI` | - | Enables "Sign out of Easy Help Desk and Workeasy360" |
+| `WORKEASY360_DEFAULT_ROLE` | `AGENT` | Role for people joining an existing organization: `ADMIN`, `AGENT` or `LIGHT_AGENT`, never `SUPER_ADMIN` |
+| `WORKEASY360_SIGN_IN_RATE_LIMIT` | `30` | Sign-in starts and callbacks per client address per minute, each route; raise it for an office behind one shared address |
+| `REALTIME_ACCESS_RECHECK_SECONDS` | `60` | How often an open `/rt` socket re-checks its person's access (reads the entitlement cache) |
+| `WORKEASY360_SSO_ONLY` | on in production, off elsewhere | Workeasy360 is the only way agents sign in. While on, API and worker refuse to boot unless issuer, client id, redirect URI (API only), key id and private key are set |
 
 With `NODE_ENV=production` the API also refuses to boot on unsafe settings:
 `COOKIE_SECURE=false`, localhost `FRONTEND_URL`/`BACKEND_URL`/`PUBLIC_API_URL`,

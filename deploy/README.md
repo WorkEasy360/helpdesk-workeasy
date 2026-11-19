@@ -206,6 +206,16 @@ Re-run), or on the host: `IMAGE_TAG=<sha> docker compose -f docker-compose.prod.
 
 ## 6. First organization
 
+**Signing in through Workeasy360 (production default).** Agents sign in with Workeasy360 and
+password sign-in, registration and invitations are off: register the integration in
+Workeasy360, set the `WORKEASY360_*` values in `.env` (the api and worker refuse to start
+without them), and the first person to sign in from a new Workeasy360 organization creates
+its Help Desk organization and becomes its Super Admin. To attach an organization that
+already exists, run `link-workeasy360-organization` first. Everything is in
+[docs/workeasy360-sso.md](../docs/workeasy360-sso.md); nginx needs no change.
+
+Only with `WORKEASY360_SSO_ONLY=false`:
+
 1. With `ALLOW_PUBLIC_REGISTRATION=true` (the template default), open
    `https://DOMAIN/register` and create your organization and owner account.
 2. Then lock registration so nobody else can create an organization on your instance:

@@ -6,6 +6,7 @@ import { useRealtime } from '@/hooks/use-realtime';
 import { AssistantPanel } from '@/components/assistant/assistant-panel';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
+import { SigningInWithWorkeasy360 } from '@/components/auth/signing-in';
 import { LoadingState } from '@/components/ui/states';
 
 /**
@@ -28,6 +29,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const status = useRequireAuth();
   const pathname = usePathname();
   useRealtime();
+
+  // Opened with no session on an SSO-only deployment: Workeasy360 is taking over right now.
+  if (status === 'signing-in') {
+    return <SigningInWithWorkeasy360 />;
+  }
 
   if (status === 'loading') {
     return (

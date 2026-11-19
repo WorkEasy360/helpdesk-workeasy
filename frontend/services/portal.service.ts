@@ -62,6 +62,8 @@ export const portalService = (slug: string) => {
     logout: () => apiPost<{ loggedOut: true }>(`${base}/auth/logout`),
     forgotPassword: (email: string) =>
       apiPost<{ requested: true }>(`${base}/auth/forgot-password`, { email }),
+    resetPassword: (token: string, password: string) =>
+      apiPost<{ reset: true }>(`${base}/auth/reset-password`, { token, password }),
     me: () => apiGet<PortalProfile>(`${base}/auth/me`),
 
     tickets: (params: { page?: number; pageSize?: number; open?: boolean; q?: string }) =>

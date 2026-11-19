@@ -5,6 +5,7 @@ import type { PrismaClient } from '@digisoft/db';
 import { decryptSecrets, providerFor, readEncryptionKey } from '@digisoft/channels';
 import type { ChannelType } from '@digisoft/shared';
 import type { OutboundEmail } from '../email-provider';
+import type { AccessGate } from '../access-gate';
 
 export interface ChannelSendJob {
   organizationId: string;
@@ -19,6 +20,7 @@ interface Deps {
   logger: Logger;
   sendEmail: (message: OutboundEmail) => Promise<string | null>;
   encryptionKey?: string;
+  gate: AccessGate;
 }
 
 /**
@@ -28,12 +30,19 @@ interface Deps {
  * mail client needs, so the customer's answer lands back on the same ticket. Messaging
  * channels go through their adapter. Either way the provider's message id is written
  * back onto the stored message, which is what makes the next inbound reply thread.
+ *
+ * Class A (requires active access): an outbound message to a customer is a business effect.
+ * Checked right before it, and skipped - logged, not retried - when access ended.
  */
 export async function handleChannelSend(
   job: Job<ChannelSendJob>,
   deps: Deps,
 ): Promise<{ delivered: boolean; externalId: string | null }> {
   const { organizationId, channelId, ticketId, messageId, to } = job.data;
+
+  if (!(await deps.gate.allows(organizationId, 'channel-send', { jobId: job.id, channelId, ticketId }))) {
+    return { delivered: false, externalId: null };
+  }
 
   const [channel, message, ticket] = await Promise.all([
     deps.prisma.channel.findFirst({

@@ -25,6 +25,7 @@ import {
   type UpdateReportDefinitionInput,
 } from '@digisoft/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { EntitlementRead } from '../common/decorators/entitlement.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { zodBody } from '../common/pipes/zod-validation.pipe';
 import { AppError } from '../common/errors/app-error';
@@ -94,6 +95,8 @@ export class AnalyticsController {
   }
 
   @RequirePermissions(PERMISSIONS.REPORT_READ)
+  // Data portability: a read-only organization can still export what it has.
+  @EntitlementRead()
   @Post('reports/export')
   createExport(
     @CurrentUser() user: AuthenticatedUser,

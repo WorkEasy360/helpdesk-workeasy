@@ -7,10 +7,10 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, ExternalLink, LogOut, Menu, Settings, UserRound } from 'lucide-react';
 import { PERMISSIONS } from '@digisoft/shared';
-import { authService } from '@/services/auth.service';
 import { notificationsService } from '@/services/notifications.service';
 import { organizationService } from '@/services/settings.service';
 import { useAuthStore } from '@/stores/auth.store';
+import { useSignOut } from '@/hooks/use-sign-out';
 import { useUiStore } from '@/stores/ui.store';
 import { initials, formatDateTime, cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -176,21 +176,11 @@ function ViewHelpCenter() {
 }
 
 export function Topbar() {
-  const router = useRouter();
-  const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const can = useAuthStore((state) => state.can);
-  const clear = useAuthStore((state) => state.clear);
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
   const sidebarOpen = useUiStore((state) => state.sidebarOpen);
-
-  const signOut = async () => {
-    await authService.logout().catch(() => undefined);
-    clear();
-    // Drop every cached response so the next person on this browser sees nothing of ours.
-    queryClient.clear();
-    router.replace('/login');
-  };
+  const { signOut, signOutOfWorkeasy360, canSignOutOfWorkeasy360 } = useSignOut();
 
   return (
     <header className="c-topbar">
@@ -268,6 +258,12 @@ export function Topbar() {
                   <LogOut aria-hidden />
                   Sign out
                 </DropdownMenu.Item>
+                {canSignOutOfWorkeasy360 ? (
+                  <DropdownMenu.Item className="c-menu-item" onSelect={() => void signOutOfWorkeasy360()}>
+                    <LogOut aria-hidden />
+                    Sign out of Easy Help Desk and Workeasy360
+                  </DropdownMenu.Item>
+                ) : null}
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>

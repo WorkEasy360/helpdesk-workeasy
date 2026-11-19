@@ -5,10 +5,12 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import '@/lib/zod-config';
 import { z } from 'zod';
 import { passwordSchema } from '@digisoft/shared';
 import { ApiError } from '@/lib/api-client';
 import { authService } from '@/services/auth.service';
+import { useAuthMethods } from '@/hooks/use-auth-methods';
 import { useHydrated } from '@/hooks/use-hydrated';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +27,7 @@ const formSchema = z
 type FormValues = z.infer<typeof formSchema>;
 
 export function ResetPasswordForm() {
+  const { methods, isLoading } = useAuthMethods();
   const router = useRouter();
   const params = useSearchParams();
   const token = params.get('token') ?? '';
@@ -51,6 +54,24 @@ export function ResetPasswordForm() {
       });
     }
   });
+
+  if (!isLoading && !methods.password) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Password sign-in is turned off</CardTitle>
+          <CardDescription>
+            Agents sign in with Workeasy360, so there is no password to set here.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild className="w-full">
+            <Link href="/login">Back to sign in</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!token) {
     return (

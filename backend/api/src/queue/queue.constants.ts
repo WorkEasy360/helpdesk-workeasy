@@ -55,6 +55,13 @@ export interface SendEmailJob {
   html: string;
   text: string;
   replyTo?: string;
+  /**
+   * Class A background work (a message to a customer produced by an automation, a survey):
+   * the worker re-checks the organization's Workeasy360 access right before sending. Unset
+   * for account-security mail (password reset, verification, invitations), which is not
+   * the organization's business and is sent regardless.
+   */
+  requiresAccess?: boolean;
 }
 
 export interface DeliverNotificationJob {

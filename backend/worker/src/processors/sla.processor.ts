@@ -1,13 +1,21 @@
 import type { Queue } from 'bullmq';
 import { AUTOMATION_JOB, scanSla, publishRealtime, type EngineDeps, type TriggerJob } from '@digisoft/engine';
+import type { AccessGate } from '../access-gate';
 
 /**
  * One SLA sweep. The scan stamps each target the first time it warns or breaches, so
  * repeating the sweep (a retried job, two workers) never fires the same event twice.
  * Built-in behaviour notifies the assignee; anything richer is an escalation rule.
+ *
+ * Class A (requires active access): the scan is global, so it checks each distinct
+ * organization once per sweep and leaves a denied organization's tickets untouched - not
+ * stamped, so their warnings and breaches are raised once access is renewed.
  */
-export async function handleSlaScan(deps: EngineDeps, automationQueue: Queue<TriggerJob>) {
-  const events = await scanSla(deps.prisma);
+export async function handleSlaScan(deps: EngineDeps, automationQueue: Queue<TriggerJob>, gate: AccessGate) {
+  const events = await scanSla(deps.prisma, new Date(), {
+    isOrganizationAllowed: gate.sweep('sla-scan'),
+    excludeOrganizationIds: gate.deniedOrganizations(),
+  });
 
   for (const event of events) {
     const ticket = await deps.prisma.ticket.findFirst({

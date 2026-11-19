@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import '@/lib/zod-config';
 import { z } from 'zod';
 import { PERMISSIONS } from '@digisoft/shared';
 import { ApiError } from '@/lib/api-client';

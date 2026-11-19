@@ -4,13 +4,13 @@ import { use, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError } from '@/lib/api-client';
-import { authService } from '@/services/auth.service';
+import { portalService } from '@/services/portal.service';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 
-/** Consumes the token from the reset email; the endpoint is shared with the agent app. */
+/** Consumes the token from a customer's reset email (the help center's own endpoint). */
 export default function PortalResetPasswordPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
@@ -31,7 +31,7 @@ export default function PortalResetPasswordPage({ params }: { params: Promise<{ 
     }
     setBusy(true);
     try {
-      await authService.resetPassword({ token, password });
+      await portalService(slug).resetPassword(token, password);
       setDone(true);
       setTimeout(() => router.replace(`/help/${slug}/login`), 1500);
     } catch (err) {

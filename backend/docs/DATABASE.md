@@ -120,6 +120,50 @@ model User {
   @@index([organizationId, isActive])
 }
 
+// Sign in with Workeasy360 (migration 20261012120000_workeasy360_sso). A tenant model.
+// A user belongs to one organization, so one Workeasy360 person in two organizations is
+// two User rows, each with its own identity. Organization.workeasy360OrganizationId
+// (uuid, unique, nullable) binds an organization to its Workeasy360 organization.
+model ExternalIdentity {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  issuer         String   // exact issuer string
+  subject        String   // the token's sub; never the email
+  email          String?  // last reported address, profile data only
+  lastLoginAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  @@unique([issuer, subject, organizationId])
+  @@unique([issuer, userId])
+}
+
+// Back-channel logout (migration 20261117170619_workeasy360_backchannel_logout, add-only).
+// One row per Workeasy360 sign-in: the session (refresh-token family) it opened, for whom,
+// and the ID token's sid. A tenant model.
+model Workeasy360SignIn {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  familyId       String    @unique  // RefreshToken.familyId of the session it opened
+  issuer         String
+  subject        String
+  providerSid    String?             // the ID token's sid (only once a back-channel URI is registered)
+  createdAt      DateTime  @default(now())
+  endedAt        DateTime?           // set when a logout token ended it
+  @@index([issuer, providerSid])
+  @@index([issuer, subject])
+}
+
+// The jti of every accepted logout token, so none is accepted twice; deleted once the token
+// would be refused anyway (expiresAt). Platform-level, not a tenant model.
+model Workeasy360LogoutToken {
+  issuer     String
+  jti        String
+  receivedAt DateTime @default(now())
+  expiresAt  DateTime
+  @@id([issuer, jti])
+}
+
 model Role {
   id             String  @id @default(cuid())
   organizationId String

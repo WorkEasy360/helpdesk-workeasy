@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { SYSTEM_ROLES, type PortalLoginInput, type PortalRegisterInput } from '@digisoft/shared';
+import {
+  SYSTEM_ROLES,
+  type PortalLoginInput,
+  type PortalRegisterInput,
+  type ResetPasswordInput,
+} from '@digisoft/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppError } from '../common/errors/app-error';
 import { AuthService, type RequestMeta, type SessionResult } from '../auth/auth.service';
@@ -138,7 +143,14 @@ export class PortalAuthService {
     await this.auth.forgotPassword(
       { email, organizationSlug: organization?.slug },
       `/help/${helpCenter.slug}/reset-password`,
+      // Only customers: an agent with this address gets nothing from a help center.
+      'CUSTOMER',
     );
+  }
+
+  /** A customer of this help center sets a new password with the token from their reset email. */
+  async resetPassword(helpCenter: PortalHelpCenter, input: ResetPasswordInput): Promise<void> {
+    await this.auth.resetPassword(input, { organizationId: helpCenter.organizationId, type: 'CUSTOMER' });
   }
 
   async profile(organizationId: string, userId: string) {

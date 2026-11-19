@@ -41,8 +41,23 @@ they may see is decided by the API, not by hiding links.
 
 ## `(auth)` — agent sign-in
 ```
-/login  /register  /forgot-password  /reset-password  /verify-email
+/login  /register  /forgot-password  /reset-password  /verify-email  /access-ended
 ```
+
+`/login` offers **Continue with Workeasy360** (a plain link to the API's
+`/api/auth/workeasy360/start`; the page itself never redirects automatically, whatever its
+query) and the password form according to `GET /auth/methods`; `?sso_error=<code>` explains a
+sign-in that did not complete. `middleware.ts` turns the launcher URL
+`/?organization=<uuid>` into that start route, even with a session. When sign-in is
+Workeasy360 only, an agent page opened with no session at all (the refresh answers 401) goes
+straight to that start route with `next=<page>` instead of `/login`: `hooks/use-session.ts`
+asks, `lib/auto-sign-in.ts` decides (SSO-only; not after a sign-out, which both sign-outs
+mark with the `hd_signed_out` session cookie; not within 60 s of the last automatic start,
+the `hd_w360_auto` loop guard). `/access-ended?reason=ended|read_only|unverified` is where the
+API client sends a 403 `WORKEASY360_*` code; a session that exists is never replaced. See
+`docs/workeasy360-sso.md`.
+
+**Zod and the CSP.** The CSP has no `unsafe-eval`, and Zod 4 probes for string evaluation when the first object schema is created. `lib/zod-config.ts` switches Zod to interpreted mode (`z.config({ jitless: true })`); `@digisoft/shared` resolves (tsconfig paths) to `lib/shared.ts`, which imports that config before re-exporting the byte-identical `shared/` copy, and every frontend file that imports `zod` imports the config first. `e2e/zod-csp.spec.ts` fails when one forgets.
 
 ## Conventions
 - **Server components by default.** Client components only for interactivity (ticket workspace, forms, realtime).
@@ -50,7 +65,7 @@ they may see is decided by the API, not by hiding links.
 - **State**: Zustand for UI state only (sidebar, selected ticket, composer draft, command palette). Server state stays in TanStack Query.
 - **Forms**: React Hook Form + Zod resolvers, with the Zod schemas imported from `backend/packages/shared` so FE and BE validate identically.
 - **Realtime**: one Socket.IO client in a provider; events invalidate the matching TanStack Query keys rather than mutating caches by hand.
-- **Auth**: `middleware.ts` guards route groups by reading the session cookie; the access token is held in memory and refreshed transparently by an Axios interceptor on 401.
+- **Auth**: `middleware.ts` guards route groups by reading the session cookie; the access token is held in memory and refreshed transparently by an Axios interceptor on 401. The interceptor renews once per request; when the renewal is refused too (the session ended: Sign out elsewhere, a back-channel logout from Workeasy360), the page moves to signed-out (`onSessionExpired`: session cleared, query cache dropped, sign-in page). The realtime socket's `session.ended` triggers the same single renewal (`hooks/use-realtime.ts`), so an ended session signs the page out without waiting for a request.
 - **UI**: shadcn/ui + Tailwind, neutral enterprise palette, dense tables, no decorative gradients or animation (§45/§62). Ticket list virtualised with TanStack Virtual (§65).
 - **States**: every data surface ships loading skeleton, empty state, and error state — required by the §69 definition of done.
 - **A11y**: semantic landmarks, focus traps in dialogs, full keyboard paths for reply/assign/status, visible focus rings, WCAG AA contrast (§64).

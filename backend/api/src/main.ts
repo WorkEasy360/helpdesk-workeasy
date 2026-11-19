@@ -10,6 +10,7 @@ import { AppModule } from './app.module';
 import { AppConfig } from './config/config.module';
 import { webhookBodyLimit } from './config/env.schema';
 import { REDIS_CLIENT } from './redis/redis.module';
+import { applyGlobalPrefix } from './common/app-prefix';
 import { RedisIoAdapter } from './realtime/redis-io.adapter';
 
 const JSON_TYPE = /^application\/([\w.+-]+\+)?json\b/i;
@@ -29,7 +30,7 @@ async function bootstrap(): Promise<void> {
   // Behind Nginx/an ALB the socket peer is the proxy; this decides which forwarded
   // headers are believed for req.ip and req.protocol.
   app.set('trust proxy', config.get('TRUST_PROXY'));
-  app.setGlobalPrefix(prefix);
+  applyGlobalPrefix(app, prefix);
 
   // Channel webhooks may carry base64 attachments, so they get a ceiling sized from
   // ATTACHMENT_MAX_BYTES; every other route keeps the much smaller BODY_LIMIT. The first

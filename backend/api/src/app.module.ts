@@ -10,6 +10,8 @@ import { QueueModule } from './queue/queue.module';
 import { EmailModule } from './email/email.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { Workeasy360Module } from './workeasy360/workeasy360.module';
+import { EntitlementGuard } from './workeasy360/entitlement.guard';
 import { RealtimeModule } from './realtime/realtime.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { UsersModule } from './users/users.module';
@@ -45,6 +47,8 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
 import { PermissionCatalogueService } from './bootstrap/permission-catalogue.service';
 import { buildThrottlerOptions } from './common/throttler/throttler.options';
 import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storage';
+import { requestSerializer } from './common/logging/sso-request-serializer';
+import { LOG_REDACT_PATHS } from './common/logging/redact';
 
 @Module({
   imports: [
@@ -55,17 +59,11 @@ import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storag
         pinoHttp: {
           level: config.get('LOG_LEVEL'),
           transport: config.isProduction ? undefined : { target: 'pino-pretty' },
+          // The Workeasy360 callback's ?code=&state= never reach a log line.
+          serializers: { req: requestSerializer },
           // Credentials must never reach the log stream.
           redact: {
-            paths: [
-              'req.headers.authorization',
-              'req.headers.cookie',
-              'res.headers["set-cookie"]',
-              'req.body.password',
-              'req.body.currentPassword',
-              'req.body.newPassword',
-              'req.body.token',
-            ],
+            paths: LOG_REDACT_PATHS,
             remove: true,
           },
         },
@@ -92,6 +90,7 @@ import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storag
     EmailModule,
     AuditModule,
     AuthModule,
+    Workeasy360Module,
     RealtimeModule,
     OrganizationsModule,
     UsersModule,
@@ -124,6 +123,8 @@ import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storag
     PermissionCatalogueService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // After the token is resolved: has Workeasy360 access ended since this session began?
+    { provide: APP_GUARD, useClass: EntitlementGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
     {

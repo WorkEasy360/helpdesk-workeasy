@@ -82,6 +82,10 @@ deployment that is reachable from a network.**
 
 Or skip the seed and create your own organization at http://localhost:3000/register.
 
+Agents sign in with email and password locally (`WORKEASY360_SSO_ONLY` defaults to off
+outside production). To rehearse "Continue with Workeasy360", see
+[docs/workeasy360-sso.md](../../docs/workeasy360-sso.md#local-development).
+
 ## Tests
 
 ```bash

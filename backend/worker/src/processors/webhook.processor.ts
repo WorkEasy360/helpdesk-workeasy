@@ -3,6 +3,7 @@ import { UnrecoverableError, type Job } from 'bullmq';
 import { safeFetch, UnsafeUrlError } from '@digisoft/channels';
 import type { Logger } from 'pino';
 import type { PrismaClient } from '@digisoft/db';
+import type { AccessGate } from '../access-gate';
 
 export interface WebhookDeliveryJob {
   organizationId: string;
@@ -19,11 +20,18 @@ const BODY_SNIPPET = 2000;
  * receiver can both authenticate the call and refuse a replayed one. Retries are
  * BullMQ's, with the delivery row carrying the attempt count for the UI; after the
  * budget is spent the delivery is marked FAILED rather than retried forever.
+ *
+ * Class A (requires active access): an outbound webhook carries the organization's data to a
+ * third party. Skipped - logged, not retried - when access ended; the delivery stays PENDING
+ * and can be replayed from the integrations screen after renewal.
  */
 export async function handleWebhookDelivery(
   job: Job<WebhookDeliveryJob>,
-  deps: { prisma: PrismaClient; logger: Logger; maxAttempts: number },
+  deps: { prisma: PrismaClient; logger: Logger; maxAttempts: number; gate: AccessGate },
 ): Promise<{ delivered: boolean; status: number | null }> {
+  if (!(await deps.gate.allows(job.data.organizationId, 'webhook', { jobId: job.id, deliveryId: job.data.deliveryId }))) {
+    return { delivered: false, status: null };
+  }
   const delivery = await deps.prisma.webhookDelivery.findFirst({
     where: { id: job.data.deliveryId, organizationId: job.data.organizationId },
     select: {

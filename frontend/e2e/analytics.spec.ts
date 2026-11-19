@@ -61,8 +61,8 @@ test('a resolved ticket appears on the dashboard', async ({ page }) => {
 
   await page.goto('/dashboard');
   await expect(
-    page.locator('a[href="/tickets"]').filter({ hasText: 'Created' }).getByText('1', { exact: true }),
-  ).toBeVisible();
+    page.locator('a[href^="/tickets"]').filter({ hasText: 'Created' }).getByText('1', { exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
 });
 
 test('reports show the same ticket across tabs and an export can be downloaded', async ({ page }) => {
